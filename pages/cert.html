@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<!-- newdrone 無人機飛行模擬器 © 2026 何政學（新北市立中正國民中學）｜授權 CC BY-NC-SA 4.0（姓名標示─非商業性─相同方式分享），見 LICENSE.md；請保留本聲明 -->
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEWDRONE｜無人機飛行員體驗證書</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🏅</text></svg>">
+<!-- ============================================================
+     cert.html — v3 體驗證書（2026-11-17）
+     · 一張證書、分段長出來：體驗飛行（任 3 關，訓練場不算）→ 基礎訓練（第一～五關）→ 進階訓練（第六～十一關）。
+     · 電腦：輸入名字 → 證書（含學生的球機圖）＋ QR → 下載圖片／列印。
+     · 手機：掃 QR 打開（成績編在網址 # 後面，不經過任何伺服器）→ 拍大頭貼 → 存到相簿。
+       LINE 內建瀏覽器會擋，所以連結帶 openExternalBrowser=1，讓 LINE 直接跳到外部瀏覽器。
+       iPad／舊 iOS 不能用分享選單時，自動改成「顯示大圖，長按儲存」。
+     · 照片只在手機上合成，不會上傳。
+     · 這是「體驗證書」，不是正式認證：簽名處放發證單位章樣文字，不放任何人的簽名圖。
+     · 查驗碼：由證書內容算出來，內容被改過就對不上（防小朋友手改用，不是加密）。
+     ============================================================ -->
+<script type="importmap">
+{ "imports": { "three": "../vendor/three-0.184.0/three.module.min.js" } }
+</script>
+<script src="../vendor/qrcode-generator-1.4.4/qrcode.js"></script>
+<link rel="stylesheet" href="../core/v3-site.css">
+<style>
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px 40px;display:flex;flex-direction:column;gap:18px;}
+  .bar{background:var(--card);border-radius:20px;padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
+  .bar label{font-weight:700;}
+  .bar input[type=text]{font:inherit;font-size:18px;padding:10px 14px;border-radius:12px;border:2px solid var(--line);background:var(--card2);color:var(--ink);width:220px;}
+  .bar .sp{flex:1;}
+  .msg{background:var(--card);border-radius:20px;padding:22px 24px;font-size:16px;line-height:1.8;color:var(--sub);}
+  .msg b{color:var(--ink);}
+  .msg.warn{border:2px solid var(--acc2);}
+  .paper{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.35);}
+  .paper canvas{width:100%;height:auto;display:block;}
+  #big{width:100%;display:none;border-radius:10px;}
+  .note{font-size:13px;color:var(--sub);line-height:1.7;}
+  .todo{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;}
+  .todo div{background:var(--card2);border-radius:14px;padding:14px 16px;font-size:15px;line-height:1.7;}
+  .todo b{display:block;color:var(--ink);font-size:16px;}
+  input[type=file]{display:none;}
+  @media print{ .wrap>*:not(.paper){display:none!important;} .paper{box-shadow:none;border-radius:0;} @page{size:A4 landscape;margin:0;} }
+</style>
+</head>
+<body>
+<header class="v3-top noprint">
+  <a class="v3-brand" href="../index.html"><span class="v3-logo"></span>NEWDRONE</a>
+  <nav><a href="../index.html" id="home">← 回首頁</a></nav>
+</header>
+<section class="v3-hero sm noprint">
+  <h1 id="h1">我的體驗證書</h1>
+  <p id="lead">玩過的關卡會自動寫進證書。用手機掃證書左下角的 QR，就能拍大頭貼、存到相簿。</p>
+</section>
+<div class="wrap">
+  <div class="msg warn" id="m" style="display:none"></div>
+  <div class="bar" id="bar" style="display:none">
+    <label for="nm">名字</label><input type="text" id="nm" maxlength="12" placeholder="寫上你的名字" autocomplete="off">
+    <button class="btn sec sm" id="b-photo">📷 加大頭貼</button>
+    <span class="sp"></span>
+    <button class="btn sec sm" id="b-print">🖨️ 列印</button>
+    <button class="btn pri sm" id="b-save">⬇ 下載圖片</button>
+  </div>
+  <div class="paper" id="paper" style="display:none"><canvas id="cv" width="2246" height="1588" aria-label="證書"></canvas></div>
+  <img id="big" alt="證書大圖（長按儲存）">
+  <div class="note" id="note"></div>
+  <div class="todo" id="todo"></div>
+  <input type="file" id="file" accept="image/*" capture="user">
+</div>
+<footer class="v3-foot noprint"><span>開發：新北市立中正國民中學 何政學教師｜推廣：新北市立中正國中自造教育及科技中心</span><span><a href="about.html" style="color:inherit">授權：CC BY-NC-SA 4.0（作者自主開發，歡迎各校非商業使用）</a></span></footer>
+
+<script type="module">
+import * as THREE from 'three';
+import { LEVELS } from '../data/levels-manifest.js';
+import { progress } from '../data/progress.js';
+import { buildSoccerCage, CAGE_STYLES, CAGE_COLORS, TAIL_COLORS, ballPrefsGet, ballBuildOpts } from '../core/drone-soccer-cage.js';
+import { applySiteTheme } from '../core/v3-site.js';
+applySiteTheme();
+
+const $=id=>document.getElementById(id);
+const ISSUER='新北市立中正國中自造教育及科技中心';
+const CERT_IDS=['acro-freeflight','t01','t02','t03','t04','t05','t06','t07','t08','t09','t10','t11'];   // 訓練場（沙盒）不算
+const STAGES=[
+  {key:'trial',name:'體驗飛行',need:3,desc:'任選 3 關完成'},
+  {key:'basic',name:'基礎訓練',ids:['t01','t02','t03','t04','t05'],desc:'地面安全、搖桿對應、緊急處置、風險應對與單飛考核'},
+  {key:'adv',name:'進階訓練',ids:['t06','t07','t08','t09','t10','t11'],desc:'逆風、精準降落、限電規劃、動態障礙、城市峽谷與搜救任務'},
+];
+const UNIT={t01:'題',t02:'秒',t03:'秒',t04:'秒'};           // 第一關＝答對題數；第二～四關＝秒數；其餘＝分數
+const title=id=>(LEVELS.find(l=>l.id===id)||{}).title||id;
+const shortT=id=>title(id).replace(/（.*?）/g,'');
+const fmt=(id,v)=>v==null||v<0?'完成':v+' '+(UNIT[id]||'分');
+const today=()=>{ const d=new Date(); return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate(); };
+
+/* ── 資料 → 網址（base64url JSON） ── */
+function b64url(str){ const by=new TextEncoder().encode(str); let s=''; by.forEach(b=>s+=String.fromCharCode(b));
+  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function unb64url(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)s+='=';
+  const bin=atob(s); return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0))); }
+/* 查驗碼：FNV-1a → 8 碼（去掉易混的 0/O/1/I） */
+const A32='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function checkCode(d){
+  const s='newdrone-v3|'+JSON.stringify([d.n,d.d,d.s,d.b]); let h=0x811c9dc5, h2=0x01000193;
+  for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; h2=Math.imul(h2^s.charCodeAt(i),0x5bd1e995)>>>0; }
+  let out=''; for(let i=0;i<8;i++){ const v=i<4?(h>>>(i*7)):(h2>>>((i-4)*7)); out+=A32[v&31]; }
+  return out.slice(0,4)+'-'+out.slice(4);
+}
+
+/* ── 收集成績 ── */
+function fromDevice(){
+  const s=CERT_IDS.map(id=>{ const lv=LEVELS.find(l=>l.id===id), r=progress.get(id);
+    if(!(lv&&r&&r[lv.doneField||'completed']))return null;
+    return typeof r.bestScore==='number'?r.bestScore:-1; });
+  const b=ballPrefsGet();
+  return {v:1,n:'',d:today(),s,
+    b:[CAGE_STYLES.findIndex(c=>c.code===b.cage),b.color,b.team==='red'?1:0,b.ring==='inner'?1:0,b.tail]};
+}
+function ballFromData(d){
+  const [c,col,t,r,tail]=d.b||[];
+  return {cage:(CAGE_STYLES[c]||CAGE_STYLES[0]).code,color:CAGE_COLORS[col]?col:0,team:t?'red':'blue',ring:r?'inner':'outer',tail:TAIL_COLORS[tail]?tail:0};
+}
+function stagesOf(d){
+  const got=CERT_IDS.map((id,i)=>({id,v:d.s[i]})).filter(x=>x.v!=null);
+  return STAGES.map(st=>{
+    if(st.key==='trial'){
+      // 只列 3 關：先挑沒被下面「基礎／進階」整段涵蓋的關卡，避免同一關重複出現
+      const full=STAGES.filter(s=>s.ids&&s.ids.every(id=>d.s[CERT_IDS.indexOf(id)]!=null)).flatMap(s=>s.ids);
+      const pick=[...got.filter(g=>!full.includes(g.id)),...got.filter(g=>full.includes(g.id))].slice(0,st.need);
+      return {...st,ok:got.length>=st.need,items:pick,left:Math.max(0,st.need-got.length)}; }
+    const items=st.ids.map(id=>({id,v:d.s[CERT_IDS.indexOf(id)]}));
+    const miss=items.filter(x=>x.v==null);
+    return {...st,ok:!miss.length,items,miss};
+  });
+}
+
+/* ── 球機圖（three.js 離屏畫一張） ── */
+async function ballImage(b){
+  try{
+    const W=420, cv=document.createElement('canvas'); cv.width=cv.height=W;
+    const r=new THREE.WebGLRenderer({canvas:cv,alpha:true,antialias:true,preserveDrawingBuffer:true});
+    r.setSize(W,W,false);
+    const sc=new THREE.Scene(), cam=new THREE.PerspectiveCamera(30,1,0.05,20);
+    cam.position.set(1.52,0.86,1.89); cam.lookAt(0,0.0,0);
+    sc.add(new THREE.HemisphereLight(0xbfd0ff,0x1a2440,1.2));
+    const sun=new THREE.DirectionalLight(0xffffff,2.4); sun.position.set(2,4,3); sc.add(sun);
+    const m=buildSoccerCage(ballBuildOpts(b)); m.rotation.y=-0.5; sc.add(m);
+    r.render(sc,cam);
+    const url=cv.toDataURL('image/png'); r.dispose();
+    const im=new Image(); im.src=url; await im.decode(); return im;
+  }catch(e){ console.warn('[cert] 球機圖畫不出來',e); return null; }
+}
+
+/* ── QR ── */
+function qrCanvas(url){
+  try{ const q=qrcode(0,'M'); q.addData(url); q.make();
+    const n=q.getModuleCount(), S=(n+8)*6, c=document.createElement('canvas'); c.width=c.height=S;
+    const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,S,S); x.fillStyle='#0B1B33';
+    for(let r=0;r<n;r++)for(let k=0;k<n;k++)if(q.isDark(r,k))x.fillRect((k+4)*6,(r+4)*6,6,6);
+    return c; }catch(e){ return null; }
+}
+
+/* ── 畫證書（1123×794 版面，畫成 2 倍） ── */
+const FONT='system-ui,-apple-system,"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif';
+const ACC='#34D3A6';
+function rr(x,X,Y,W,H,R){ x.beginPath(); x.moveTo(X+R,Y); x.arcTo(X+W,Y,X+W,Y+H,R); x.arcTo(X+W,Y+H,X,Y+H,R); x.arcTo(X,Y+H,X,Y,R); x.arcTo(X,Y,X+W,Y,R); x.closePath(); }
+function wrap(x,text,X,Y,maxW,lh,maxLines=3){
+  const out=[]; let line='';
+  for(const ch of text){ if(x.measureText(line+ch).width>maxW&&line){ out.push(line); line=ch; } else line+=ch; }
+  if(line)out.push(line);
+  out.slice(0,maxLines).forEach((l,i)=>x.fillText(i===maxLines-1&&out.length>maxLines?l.slice(0,-1)+'…':l,X,Y+i*lh));
+  return Math.min(out.length,maxLines);
+}
+function draw(d,{photo,ball,qr,code}){
+  const cv=$('cv'), x=cv.getContext('2d'); x.setTransform(2,0,0,2,0,0);
+  x.fillStyle='#fff'; x.fillRect(0,0,1123,794);
+  // 左欄
+  x.fillStyle='#0B1B33'; x.fillRect(0,0,340,794);
+  rr(x,32,40,30,30,9); x.fillStyle=ACC; x.fill();
+  x.strokeStyle='#06231B'; x.lineWidth=1.8; x.lineCap='round'; x.beginPath();
+  x.moveTo(42,50);x.lineTo(52,60);x.moveTo(52,50);x.lineTo(42,60); x.stroke();
+  for(const [a,b] of [[41,49],[53,49],[41,61],[53,61]]){ x.beginPath(); x.arc(a,b,3,0,7); x.stroke(); }
+  x.fillStyle='#F2F6FB'; x.font='900 16px '+FONT; x.textAlign='left'; x.textBaseline='middle'; x.fillText('NEWDRONE',72,56);
+  // 大頭照（沒有照片＝畫球機）
+  const PX=80,PY=110,PS=180;
+  rr(x,PX,PY,PS,PS,28); x.fillStyle='#1B3761'; x.fill();
+  x.save(); rr(x,PX,PY,PS,PS,28); x.clip();
+  if(photo){ const s=Math.min(photo.width,photo.height); x.drawImage(photo,(photo.width-s)/2,(photo.height-s)/2,s,s,PX,PY,PS,PS); }
+  else if(ball){ x.drawImage(ball,PX+4,PY+4,PS-8,PS-8); }
+  x.restore();
+  rr(x,PX,PY,PS,PS,28); x.lineWidth=4; x.strokeStyle=ACC; x.stroke();
+  if(photo&&ball){ x.save(); x.beginPath(); x.arc(PX+PS-6,PY+PS-6,40,0,7); x.fillStyle='#0B1B33'; x.fill(); x.lineWidth=3; x.strokeStyle=ACC; x.stroke(); x.clip();
+    x.drawImage(ball,PX+PS-46,PY+PS-46,80,80); x.restore(); }
+  x.textAlign='center'; x.fillStyle='#F2F6FB';
+  let fs=34; x.font='900 '+fs+'px '+FONT; const nm=d.n||'（寫上名字）';
+  while(x.measureText(nm).width>280&&fs>18){ fs-=2; x.font='900 '+fs+'px '+FONT; }
+  x.fillText(nm,170,340);
+  x.font='400 15px '+FONT; x.fillStyle='#B4C3D8'; x.fillText('飛行員',170,378);
+  const bp=ballFromData(d), cs=CAGE_STYLES.find(c=>c.code===bp.cage);
+  x.font='400 13px '+FONT; x.fillText(`我的球機：${cs.name}・${bp.team==='red'?'紅隊':'藍隊'}・尾燈${TAIL_COLORS[bp.tail].name}`,170,404);
+  if(qr){ rr(x,118,560,104,104,10); x.fillStyle='#fff'; x.fill(); x.drawImage(qr,122,564,96,96); }
+  x.font='400 13px '+FONT; x.fillStyle='#B4C3D8';
+  x.fillText(qr?'手機掃這裡：拍照、存相簿':'',170,684);
+  x.fillText('查驗碼 '+code,170,708);
+  // 右欄
+  x.textAlign='left'; x.textBaseline='alphabetic';
+  rr(x,396,54,206,30,15); x.fillStyle=ACC; x.fill();
+  x.fillStyle='#06231B'; x.font='900 14px '+FONT; x.fillText('CERTIFICATE・體驗證書',410,75);
+  x.fillStyle='#0B1B33'; x.font='900 46px '+FONT; x.fillText('無人機飛行員體驗證書',396,140);
+  x.fillStyle='#3A4F6E'; x.font='400 18px '+FONT; x.fillText('完成下列無人機飛行模擬體驗，特頒此證。',396,178);
+  let y=208;
+  for(const st of stagesOf(d)){
+    x.strokeStyle='#DDE4EE'; x.lineWidth=1;
+    x.font='900 19px '+FONT; x.fillStyle=st.ok?'#0F6B53':'#9AA6B8'; x.fillText((st.ok?'✔ ':'')+st.name,396,y+30);
+    x.font='400 15px '+FONT; x.fillStyle=st.ok?'#2A3D5A':'#9AA6B8';
+    let text;
+    if(st.key==='trial') text=st.ok?st.items.map(it=>`${shortT(it.id)} ${fmt(it.id,it.v)}`).join('・'):`再完成 ${st.left} 關就會出現`;
+    else text=st.ok?st.items.map(it=>`${shortT(it.id).replace(/^第[一二三四五六七八九十]+關\s*/,'')} ${fmt(it.id,it.v)}`).join('・')
+                   :`尚未完成（${st.desc}；還差 ${st.miss.length} 關）`;
+    const lines=wrap(x,text,516,y+30,550,24,3);
+    y+=Math.max(64,30+lines*24+14);
+    x.beginPath(); x.moveTo(396,y); x.lineTo(1067,y); x.stroke();
+  }
+  // 頁尾：發證單位＋章樣
+  x.fillStyle='#0B1B33'; x.font='700 16px '+FONT; x.fillText(ISSUER,396,700);
+  x.fillStyle='#2A3D5A'; x.font='400 15px '+FONT; x.fillText('發證日期　'+d.d,396,726);
+  x.fillStyle='#8A97AA'; x.font='400 11px '+FONT;
+  x.fillText('本證書依模擬器的飛行紀錄自動產生，為體驗紀念，非正式檢定或認證。',396,758);
+  // 章（發證單位全名分三行，朱紅色）
+  const SX=930,SY=600,SW=132;
+  x.save(); x.translate(SX+SW/2,SY+SW/2); x.rotate(-0.06);
+  rr(x,-SW/2,-SW/2,SW,SW,10); x.lineWidth=4; x.strokeStyle='#C8312B'; x.stroke();
+  rr(x,-SW/2+7,-SW/2+7,SW-14,SW-14,6); x.lineWidth=1.2; x.stroke();
+  x.fillStyle='#C8312B'; x.textAlign='center'; x.textBaseline='middle';
+  x.font='900 14px '+FONT; x.fillText('新北市立中正國中',0,-30);
+  x.font='900 17px '+FONT; x.fillText('自造教育及',0,0);
+  x.font='900 22px '+FONT; x.fillText('科技中心',0,30);
+  x.restore();
+  x.textAlign='center'; x.fillStyle='#3A4F6E'; x.font='400 13px '+FONT; x.fillText('發證單位',SX+SW/2,SY+SW+22);
+}
+
+/* ── 存檔 ── */
+const blob=()=>new Promise(res=>$('cv').toBlob(res,'image/png'));
+const fname=d=>`無人機飛行員體驗證書_${d.n||'飛行員'}.png`;
+async function download(d){ const b=await blob(), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=fname(d); document.body.appendChild(a); a.click(); a.remove(); }
+async function saveToPhone(d){
+  const b=await blob(), f=new File([b],fname(d),{type:'image/png'});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){
+    try{ await navigator.share({files:[f],title:'無人機飛行員體驗證書'}); $('note').textContent='在分享選單選「儲存影像」就會存進相簿。'; return; }
+    catch(e){ if(e.name==='AbortError')return; }
+  }
+  // 不能用分享選單（iPad／舊 iOS）→ 顯示大圖讓他長按
+  const im=$('big'); im.src=URL.createObjectURL(b); im.style.display='block'; $('paper').style.display='none';
+  $('note').innerHTML='<b>長按上面的圖片</b>，選「加入照片」或「儲存影像」。';
+  im.scrollIntoView({behavior:'smooth'});
+}
+
+/* ── 照片 ── */
+let photo=null;
+$('file').addEventListener('change',async e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f)return;
+  const im=new Image(); im.src=URL.createObjectURL(f);
+  try{ await im.decode(); }catch{ return; }
+  // 先縮小（手機照片很大）
+  const s=Math.min(im.width,im.height), c=document.createElement('canvas'); c.width=c.height=480;
+  c.getContext('2d').drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,480,480);
+  photo=c; render();
+});
+$('b-photo').addEventListener('click',()=>$('file').click());
+
+/* ── 主流程 ── */
+const hash=location.hash.match(/^#c=([\w-]+)/);
+const phone=!!hash;
+let data, ball=null, code='';
+function linkFor(d){
+  const u=new URL(location.href); u.hash=''; u.search='?openExternalBrowser=1';
+  return u.href+'#c='+b64url(JSON.stringify({...d,k:checkCode(d)}));
+}
+const offline=/^(localhost|127\.|192\.168\.|10\.)/.test(location.hostname)||location.protocol==='file:';
+function render(){
+  code=checkCode(data);
+  const link=linkFor(data); window.__certLink=link;
+  const qr=qrCanvas(link);
+  draw(data,{photo,ball,qr,code});
+  $('big').style.display='none'; $('paper').style.display='block';
+}
+
+async function main(){
+  if(phone){
+    try{ data=JSON.parse(unb64url(hash[1])); }catch{ data=null; }
+    if(!data||!Array.isArray(data.s)){ $('m').style.display='block'; $('m').innerHTML='這個證書連結讀不出來，可能沒有掃完整。請回電腦再掃一次 QR。'; return; }
+    const ok=data.k===checkCode(data);
+    $('h1').textContent=(data.n||'飛行員')+' 的體驗證書';
+    $('lead').textContent='按「拍大頭貼」放進證書，再按「存到相簿」。照片只在這支手機上合成，不會上傳。';
+    $('nm').value=data.n||''; $('nm').readOnly=true;
+    $('b-photo').textContent='📷 拍大頭貼';
+    $('b-print').style.display='none';
+    $('b-save').textContent='💾 存到相簿';
+    $('b-save').onclick=()=>saveToPhone(data);
+    if(!ok){ $('m').style.display='block'; $('m').innerHTML='⚠ 查驗碼對不上：這個連結的內容被改過，證書上的成績可能不是真的。'; }
+    $('home').textContent='去玩 NEWDRONE';
+  }else{
+    data=fromDevice();
+    const s=progress.student()||{};
+    try{ data.n=localStorage.getItem('nd3.certName')||s.name||''; }catch{ data.n=s.name||''; }
+    $('nm').value=data.n;
+    $('nm').addEventListener('input',()=>{ data.n=$('nm').value.trim(); try{ localStorage.setItem('nd3.certName',data.n); }catch{} render(); });
+    $('b-save').onclick=()=>download(data);
+    $('b-print').onclick=()=>window.print();
+    const st=stagesOf(data);
+    if(!st[0].ok){
+      $('m').style.display='block';
+      $('m').innerHTML=`還差 <b>${st[0].left} 關</b>就能拿體驗證書（任選都可以，訓練場不算）。<br><a href="../index.html">回首頁選關卡</a>`;
+      $('todo').innerHTML=st.map(t=>`<div><b>${t.name}</b>${t.ok?'✔ 已完成':t.key==='trial'?`完成 ${t.items.length}／3 關`:`還差 ${t.miss.length} 關：${t.miss.map(m=>shortT(m.id).replace(/^第[一二三四五六七八九十]+關\s*/,'')).join('、')}`}</div>`).join('');
+      return;
+    }
+    $('note').innerHTML=offline
+      ?'這台電腦是<b>離線版</b>（網址是 localhost），手機掃 QR 會打不開。要給學生存到手機，請用網路版開這一頁，或直接按「下載圖片」。'
+      :'手機掃證書左下角的 QR：可以拍大頭貼、存到相簿。LINE 掃到會自動跳去外部瀏覽器。成績編在連結裡，不會上傳。';
+  }
+  $('bar').style.display='flex';
+  ball=await ballImage(ballFromData(data));
+  render();
+}
+main();
+</script>
+<script type="module" src="../core/gp-nav-boot.js"></script>
+</body>
+</html>

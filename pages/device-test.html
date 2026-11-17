@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<!-- newdrone 無人機飛行模擬器 © 2026 何政學（新北市立中正國民中學）｜授權 CC BY-NC-SA 4.0（姓名標示─非商業性─相同方式分享），見 LICENSE.md；請保留本聲明 -->
+<!-- 裝置測試頁 v1（2026-11-17）：體驗版動工前，先確認各裝置／Google 協作平台嵌入時，
+     搖桿、進度儲存、鏡頭自拍、證書圖片存相簿、證書連結 QR 是否可行。
+     放在 pages/ 底下（用到 ../vendor/qrcode-generator-1.4.4/qrcode.js）。 -->
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>newdrone｜裝置測試頁</title>
+<script src="../vendor/qrcode-generator-1.4.4/qrcode.js"></script>
+<style>
+  body{margin:0;background:#0B1B33;color:#F2F6FB;font-family:system-ui,-apple-system,"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif;line-height:1.6}
+  .wrap{max-width:860px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:26px;margin:4px 0 6px}
+  .lead{color:#B4C3D8;font-size:15px;margin:0 0 16px}
+  .card{background:#132A4D;border-radius:16px;padding:16px 18px;margin:14px 0}
+  .card h2{font-size:19px;margin:0 0 8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .st{font-size:13px;font-weight:700;padding:3px 10px;border-radius:999px;background:#1B3761;color:#B4C3D8}
+  .st.ok{background:#34D3A6;color:#06231B}.st.warn{background:#FFC85C;color:#3A2600}.st.bad{background:#FF7A7A;color:#3A0000}
+  .info{font-size:14px;color:#D6E0EE;white-space:pre-line;word-break:break-all}
+  button{font:inherit;font-weight:700;font-size:16px;border:none;border-radius:12px;padding:12px 18px;margin:6px 8px 0 0;min-height:46px;background:#34D3A6;color:#06231B;cursor:pointer}
+  button.sec{background:transparent;color:#F2F6FB;border:2px solid #35507A}
+  input[type=text]{font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:2px solid #35507A;background:#0B1B33;color:#F2F6FB;width:200px}
+  .bars{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:8px}
+  .bar{background:#0B1B33;border-radius:6px;height:22px;position:relative;overflow:hidden;font-size:12px}
+  .bar i{position:absolute;top:0;bottom:0;left:50%;background:#34D3A6}
+  .bar span{position:relative;padding-left:6px;line-height:22px}
+  video,canvas.view,img.view{max-width:100%;border-radius:12px;margin-top:10px;background:#000}
+  #decoded{display:none;background:#34D3A6;color:#06231B;border-radius:16px;padding:16px 18px;margin:10px 0;font-weight:700}
+  textarea{width:100%;box-sizing:border-box;height:200px;font:13px/1.5 Consolas,monospace;background:#0B1B33;color:#F2F6FB;border:2px solid #35507A;border-radius:10px;padding:10px}
+  .hint{background:#FFC85C;color:#3A2600;border-radius:12px;padding:10px 14px;font-weight:700;margin:10px 0;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="decoded"></div>
+  <h1>裝置測試頁</h1>
+  <p class="lead">每台裝置測兩次：① 直接開這個網址；② 嵌進 Google 協作平台再開一次。每個項目按一按，最後按「複製結果」貼回來。</p>
+  <div class="hint" id="inapp">你現在在 LINE／FB 等 App 裡面開。鏡頭和存檔常被擋，請也用 Safari 或 Chrome 再開一次比較。</div>
+
+  <div class="card"><h2>1. 環境 <span class="st" id="st-env">—</span></h2><div class="info" id="out-env"></div></div>
+
+  <div class="card"><h2>2. 進度存不存得住 <span class="st" id="st-store">—</span></h2>
+    <div class="info" id="out-store"></div>
+    <button class="sec" onclick="location.reload()">重新整理一次</button>
+  </div>
+
+  <div class="card"><h2>3. 3D 畫面（WebGL） <span class="st" id="st-gl">—</span></h2><div class="info" id="out-gl"></div></div>
+
+  <div class="card"><h2>4. 搖桿 <span class="st" id="st-pad">還沒偵測到</span></h2>
+    <div class="info" id="out-pad">把手把或遙控器接上，然後按任意按鈕、推一推搖桿。</div>
+    <div class="bars" id="pad-bars"></div>
+  </div>
+
+  <div class="card"><h2>5. 全螢幕 <span class="st" id="st-fs">—</span></h2>
+    <button onclick="testFullscreen()">進入全螢幕</button><div class="info" id="out-fs"></div>
+  </div>
+
+  <div class="card"><h2>6. 鏡頭自拍 <span class="st" id="st-cam">—</span></h2>
+    <button onclick="startCam()">開啟前鏡頭</button><button class="sec" onclick="snap()">拍照放進證書</button>
+    <div class="info" id="out-cam"></div>
+    <video id="vid" playsinline autoplay muted style="display:none;width:240px"></video>
+  </div>
+
+  <div class="card"><h2>7. 證書圖片：下載／存相簿 <span class="st" id="st-cert">—</span></h2>
+    <label>名字（測試用）<input type="text" id="nm" value="測試同學" oninput="drawCert()"></label>
+    <div>
+      <button onclick="dlCert()">下載圖片</button>
+      <button onclick="shareCert()">分享／存到相簿</button>
+      <button class="sec" onclick="showBig()">顯示大圖（長按儲存）</button>
+    </div>
+    <div class="info" id="out-cert"></div>
+    <canvas id="cert" class="view" width="1123" height="794" style="width:100%"></canvas>
+    <img id="big" class="view" alt="證書測試圖" style="display:none">
+  </div>
+
+  <div class="card"><h2>8. 證書連結 QR（手機掃） <span class="st" id="st-link">—</span></h2>
+    <div class="info" id="out-link"></div>
+    <canvas id="qr" class="view" width="260" height="260" style="background:#fff;width:220px"></canvas>
+  </div>
+
+  <div class="card"><h2>結果</h2>
+    <textarea id="report" readonly></textarea>
+    <button onclick="copyReport()">複製結果</button><span class="info" id="out-copy"></span>
+  </div>
+</div>
+
+<script>
+const R = {};                       // 每項結果：{s:'ok'|'warn'|'bad', t:'說明'}
+const $ = id => document.getElementById(id);
+function set(key, s, t){
+  R[key] = {s, t};
+  const el = $('st-' + key);
+  if (el){ el.className = 'st ' + s; el.textContent = s==='ok' ? '可以' : s==='warn' ? '要注意' : '不行'; }
+  render();
+}
+function render(){
+  const names = {env:'環境',store:'進度儲存',gl:'3D 畫面',pad:'搖桿',fs:'全螢幕',cam:'鏡頭',cert:'證書圖片',link:'證書連結'};
+  const lines = ['newdrone 裝置測試頁 v1', '時間：' + new Date().toLocaleString('zh-TW')];
+  for (const k of Object.keys(names)){
+    const r = R[k];
+    lines.push('【' + names[k] + '】' + (r ? (r.s==='ok'?'可以':r.s==='warn'?'要注意':'不行') + '｜' + r.t : '沒測'));
+  }
+  $('report').value = lines.join('\n');
+}
+
+/* ── 1. 環境 ── */
+const inFrame = (() => { try { return window.self !== window.top; } catch(e){ return true; } })();
+const ua = navigator.userAgent;
+const inApp = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(ua);
+(function env(){
+  let dev = (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) ? 'iPad' :
+            /iPhone/.test(ua) ? 'iPhone' : /CrOS/.test(ua) ? 'Chromebook' : /Android/.test(ua) ? 'Android' :
+            /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : '其他';
+  const br = /Edg\//.test(ua) ? 'Edge' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox/.test(ua) ? 'Firefox' : /Safari/.test(ua) ? 'Safari' : '其他';
+  const t = '裝置：' + dev + '　瀏覽器：' + br + (inApp ? '（App 內建瀏覽器）' : '') +
+    '\n開啟方式：' + (inFrame ? '嵌在別的網頁框框裡（例如協作平台）' : '直接開啟') +
+    '\n安全連線 https：' + (location.protocol === 'https:' ? '是' : '否') +
+    '\n畫面：' + screen.width + '×' + screen.height + '　像素比 ' + devicePixelRatio;
+  $('out-env').textContent = t;
+  if (inApp) $('inapp').style.display = 'block';
+  set('env', location.protocol === 'https:' ? 'ok' : 'warn', t.replace(/\n/g, '；'));
+})();
+
+/* ── 2. 儲存 ── */
+(async function store(){
+  let n = 0, msg = '';
+  try {
+    n = (parseInt(localStorage.getItem('nd_test_visits') || '0', 10) || 0) + 1;
+    localStorage.setItem('nd_test_visits', String(n));
+    const back = localStorage.getItem('nd_test_visits');
+    msg = '這是第 ' + n + ' 次開啟這頁。按「重新整理一次」後，數字要變成 ' + (n + 1) + ' 才代表進度存得住。';
+    if (back !== String(n)) throw new Error('寫入後讀不回來');
+    let extra = '';
+    if (document.hasStorageAccess){
+      try { extra = '\n框架儲存權限：' + ((await document.hasStorageAccess()) ? '有' : '沒有（關掉後進度可能不見）'); } catch(e){}
+    }
+    $('out-store').textContent = msg + extra;
+    set('store', n >= 2 ? 'ok' : 'warn', '開啟次數 ' + n + (n >= 2 ? '（重新整理後仍記得）' : '（請再重新整理一次確認）') + extra.replace(/\n/g, '；'));
+  } catch(e){
+    $('out-store').textContent = '無法儲存：' + e.message;
+    set('store', 'bad', '無法儲存：' + e.message);
+  }
+})();
+
+/* ── 3. WebGL ── */
+(function gl(){
+  const c = document.createElement('canvas');
+  const g = c.getContext('webgl2') || c.getContext('webgl');
+  if (!g){ $('out-gl').textContent = '這台不能跑 3D'; return set('gl', 'bad', '不支援 WebGL'); }
+  let gpu = '';
+  const ext = g.getExtension('WEBGL_debug_renderer_info');
+  if (ext) gpu = g.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+  const t = (g instanceof (window.WebGL2RenderingContext || Object) ? 'WebGL2' : 'WebGL1') + (gpu ? '　顯示卡：' + gpu : '');
+  $('out-gl').textContent = t;
+  set('gl', 'ok', t);
+})();
+
+/* ── 4. 搖桿 ── */
+let padSeen = false;
+function pollPad(){
+  let pads = [];
+  try { pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : []; }
+  catch(e){
+    $('out-pad').textContent = '讀不到搖桿（被擋）：' + e.message;
+    return set('pad', 'bad', '被擋：' + e.message);
+  }
+  if (pads.length){
+    const p = pads[0];
+    const pressed = p.buttons.map((b, i) => b.pressed ? i : null).filter(v => v !== null);
+    $('out-pad').textContent = '偵測到：' + p.id + '\n按著的按鈕：' + (pressed.length ? pressed.join('、') : '沒有');
+    $('pad-bars').innerHTML = p.axes.map((a, i) =>
+      '<div class="bar"><i style="left:' + (a < 0 ? 50 + a * 50 : 50) + '%;width:' + Math.abs(a) * 50 + '%"></i><span>軸' + i + '  ' + a.toFixed(2) + '</span></div>').join('');
+    if (!padSeen){ padSeen = true; set('pad', 'ok', p.id + '（' + p.axes.length + ' 軸、' + p.buttons.length + ' 鍵）'); }
+  }
+  requestAnimationFrame(pollPad);
+}
+if (!navigator.getGamepads){ $('out-pad').textContent = '這個瀏覽器不支援搖桿'; set('pad', 'bad', '不支援 Gamepad API'); }
+else { addEventListener('gamepadconnected', () => {}); requestAnimationFrame(pollPad); }
+
+/* ── 5. 全螢幕 ── */
+async function testFullscreen(){
+  const el = document.documentElement;
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!fn){ $('out-fs').textContent = '不支援全螢幕（iPhone 常見）'; return set('fs', 'warn', '不支援'); }
+  try {
+    await fn.call(el);
+    $('out-fs').textContent = '成功，按 Esc 或返回離開。';
+    set('fs', 'ok', '可以全螢幕');
+  } catch(e){ $('out-fs').textContent = '失敗：' + e.message; set('fs', 'bad', e.message); }
+}
+
+/* ── 6. 鏡頭 ── */
+let stream = null, photo = null;
+async function startCam(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $('out-cam').textContent = '不支援鏡頭（可能不是 https，或被框架擋住）';
+    return set('cam', 'bad', '不支援 getUserMedia');
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user'}, audio: false});
+    const v = $('vid'); v.srcObject = stream; v.style.display = 'block';
+    $('out-cam').textContent = '鏡頭開了，按「拍照放進證書」。';
+    set('cam', 'ok', '可以開鏡頭');
+  } catch(e){
+    $('out-cam').textContent = '開不了：' + e.name + ' ' + e.message;
+    set('cam', 'bad', e.name + ' ' + e.message);
+  }
+}
+function snap(){
+  const v = $('vid');
+  if (!stream || !v.videoWidth){ $('out-cam').textContent = '請先開啟鏡頭'; return; }
+  const s = Math.min(v.videoWidth, v.videoHeight);
+  const c = document.createElement('canvas'); c.width = c.height = 400;
+  c.getContext('2d').drawImage(v, (v.videoWidth - s) / 2, (v.videoHeight - s) / 2, s, s, 0, 0, 400, 400);
+  photo = c;
+  stream.getTracks().forEach(t => t.stop()); stream = null; v.style.display = 'none';
+  $('out-cam').textContent = '拍好了，已放進下面的證書。';
+  drawCert();
+}
+
+/* ── 7. 證書圖片 ── */
+function drawCert(){
+  const c = $('cert'), x = c.getContext('2d');
+  x.fillStyle = '#FFFFFF'; x.fillRect(0, 0, 1123, 794);
+  x.fillStyle = '#0B1B33'; x.fillRect(0, 0, 340, 794);
+  x.strokeStyle = '#34D3A6'; x.lineWidth = 6;
+  x.save(); x.beginPath(); x.arc(170, 260, 100, 0, Math.PI * 2); x.closePath(); x.stroke(); x.clip();
+  if (photo) x.drawImage(photo, 70, 160, 200, 200); else { x.fillStyle = '#1B3761'; x.fillRect(70, 160, 200, 200); }
+  x.restore();
+  const font = 'system-ui,-apple-system,"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif';
+  x.fillStyle = '#F2F6FB'; x.textAlign = 'center';
+  x.font = '900 34px ' + font; x.fillText($('nm').value || '（名字）', 170, 420);
+  x.textAlign = 'left'; x.fillStyle = '#0B1B33';
+  x.font = '900 48px ' + font; x.fillText('無人機飛行員證書（測試）', 390, 150);
+  x.font = '400 22px ' + font; x.fillStyle = '#2A3D5A';
+  x.fillText('這是裝置測試用的證書，不是正式證書。', 390, 210);
+  x.fillText('體驗飛行・基礎訓練・進階訓練', 390, 270);
+  x.fillText('新北市立中正國中自造教育及科技中心', 390, 700);
+  if (qrCanvas) x.drawImage(qrCanvas, 120, 560, 100, 100);
+  if (R.cert === undefined) set('cert', 'warn', '圖片畫得出來，下載／存相簿還沒試');
+}
+function certBlob(){ return new Promise(res => $('cert').toBlob(res, 'image/png')); }
+async function dlCert(){
+  try {
+    const b = await certBlob(); const a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = 'newdrone-測試證書.png'; document.body.appendChild(a); a.click(); a.remove();
+    $('out-cert').textContent = '已送出下載。請看看檔案有沒有出現在「下載」或「檔案」裡。';
+    set('cert', 'warn', '已按下載（請確認檔案是否真的出現）');
+  } catch(e){ $('out-cert').textContent = '下載失敗：' + e.message; set('cert', 'bad', '下載失敗：' + e.message); }
+}
+async function shareCert(){
+  try {
+    const b = await certBlob();
+    const f = new File([b], 'newdrone-測試證書.png', {type: 'image/png'});
+    if (navigator.canShare && navigator.canShare({files: [f]})){
+      await navigator.share({files: [f], title: '無人機飛行員證書'});
+      $('out-cert').textContent = '分享選單有出現。若選「儲存影像」能進相簿就代表可以。';
+      set('cert', 'ok', '分享選單可用（可存相簿）');
+    } else {
+      $('out-cert').textContent = '這個瀏覽器不能用分享選單存圖，請改用「顯示大圖」長按儲存。';
+      set('cert', 'warn', '不支援分享檔案');
+    }
+  } catch(e){
+    if (e.name === 'AbortError'){ $('out-cert').textContent = '分享選單有出現（你按了取消）。'; set('cert', 'ok', '分享選單可用'); }
+    else { $('out-cert').textContent = '分享失敗：' + e.message; set('cert', 'bad', '分享失敗：' + e.message); }
+  }
+}
+async function showBig(){
+  const b = await certBlob(); const im = $('big');
+  im.src = URL.createObjectURL(b); im.style.display = 'block';
+  $('out-cert').textContent = '下方出現大圖了。手機請長按圖片，看看有沒有「儲存影像／加入照片」。';
+}
+
+/* ── 8. 證書連結 ── */
+let qrCanvas = null;
+function b64url(str){
+  const bytes = new TextEncoder().encode(str); let bin = '';
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function unb64url(s){
+  s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '=';
+  const bin = atob(s); return new TextDecoder().decode(Uint8Array.from(bin, ch => ch.charCodeAt(0)));
+}
+(function link(){
+  // 收到別人掃過來的連結 → 解碼顯示
+  const m = location.hash.match(/^#c=(.+)$/);
+  if (m){
+    try {
+      const d = JSON.parse(unb64url(m[1]));
+      $('decoded').style.display = 'block';
+      $('decoded').textContent = '連結解碼成功：' + d.n + '，13 關成績 ' + d.s.join(' / ') + '（這就是手機掃 QR 後會看到的資料）';
+      set('link', 'ok', '這台是用 QR 連結打開的，解碼成功');
+    } catch(e){ set('link', 'bad', '連結解碼失敗：' + e.message); }
+  }
+  // 產生一個 13 關的範例連結 + QR
+  const sample = {n: '測試同學', s: [1,1,1,1,1,88,0,0,0,0,0,0,0], d: '2026-11-17'};
+  const url = location.origin + location.pathname + '#c=' + b64url(JSON.stringify(sample));
+  try {
+    const q = qrcode(0, 'M'); q.addData(url); q.make();
+    const n = q.getModuleCount(), c = $('qr'), x = c.getContext('2d'), cell = Math.floor(260 / (n + 8)), off = Math.floor((260 - cell * n) / 2);
+    x.fillStyle = '#fff'; x.fillRect(0, 0, 260, 260); x.fillStyle = '#000';
+    for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) x.fillRect(off + k * cell, off + r * cell, cell, cell);
+    qrCanvas = c;
+    $('out-link').textContent = '連結長度：' + url.length + ' 字。用另一支手機掃下面的 QR，手機打開後最上面出現綠色「連結解碼成功」就代表可以。';
+    if (!R.link) set('link', 'warn', '已產生 QR（長度 ' + url.length + ' 字），等手機掃描確認');
+  } catch(e){ $('out-link').textContent = 'QR 產生失敗：' + e.message; set('link', 'bad', 'QR 產生失敗：' + e.message); }
+  drawCert();
+})();
+
+async function copyReport(){
+  render();
+  try { await navigator.clipboard.writeText($('report').value); $('out-copy').textContent = '　已複製'; }
+  catch(e){ $('report').select(); document.execCommand('copy'); $('out-copy').textContent = '　已複製（如果沒有，請手動全選複製）'; }
+}
+render();
+</script>
+</body>
+</html>

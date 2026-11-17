@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<!-- newdrone 無人機飛行模擬器 © 2026 何政學（新北市立中正國民中學）｜授權 CC BY-NC-SA 4.0（姓名標示─非商業性─相同方式分享），見 LICENSE.md；請保留本聲明 -->
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>newdrone｜改裝賽道：森林峽谷</title>
+<!-- ============================================================
+     race-forest.html — 改裝賽道第 2 條「森林峽谷」（2026-10-09，第二階段）
+     老師選的主題：樹林間穿梭、高低起伏，跟操場的平坦開闊差最多，最能感覺零件差異
+     （大槳爬升快、小槳轉向靈活、護框撞樹不怕）。規則同操場入門（core/race.js）。
+     · 14 個環沿著一條封閉曲線，高度 1.8～7 公尺；有一段低空穿過倒木下方、一段爬上山脊
+     · 樹幹與樹冠會撞（撞到掉電、被彈開）；兩側岩石也會撞
+     · 霧：遠處看不清楚，要記路線
+     ============================================================ -->
+<script type="importmap">
+{ "imports": { "three": "../vendor/three-0.184.0/three.module.min.js" } }
+</script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0c1a2e;font-family:'Share Tech Mono','Consolas',monospace;}
+  #c{width:100%;height:100%;display:block;touch-action:none;}
+  body.nd-portrait #c{height:60%;}
+  #count{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);font-size:96px;color:#00eeff;font-weight:bold;
+    text-shadow:0 0 30px rgba(0,238,255,.7);pointer-events:none;z-index:30;display:none;}
+  #lap{position:fixed;right:12px;top:150px;z-index:21;background:rgba(6,16,28,.82);border:1px solid rgba(0,238,255,.5);border-radius:10px;
+    padding:6px 12px;color:#e6f7ff;font-size:13px;line-height:1.6;pointer-events:none;min-width:120px;}
+  #lap b{color:#00eeff;font-size:16px;}
+  body.nd-portrait #lap{top:110px;font-size:11px;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="count"></div>
+<div id="lap"></div>
+<script type="module">
+import { runRace } from '../core/race.js';
+import { TRACK } from '../data/tracks/race-forest.js';   // 2026-10-11 賽道資料搬到 data/tracks/（對戰模式共用），內容不變
+runRace(TRACK);
+</script>
+</body>
+</html>

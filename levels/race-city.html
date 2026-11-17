@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!-- newdrone 無人機飛行模擬器 © 2026 何政學（新北市立中正國民中學）｜授權 CC BY-NC-SA 4.0（姓名標示─非商業性─相同方式分享），見 LICENSE.md；請保留本聲明 -->
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>newdrone｜改裝賽道：城市高樓</title>
+<!-- ============================================================
+     race-city.html — 改裝賽道第 3 條「城市高樓」（2026-10-10，第二階段；老師：做到 5 條以上、三個主題盡量不同）
+     · 大樓之間的街道穿梭，有一段要爬到屋頂高度飛越矮樓、一段穿過兩棟大樓之間的空橋下方
+     · 🌀 亂流區（大樓之間的風）：在裡面會被一陣一陣吹晃；機體越重越穩（大容量電池、護框有好處）
+     · 大樓會撞（撞到掉電、被彈開）；可以停在屋頂上（不算撞）
+     ============================================================ -->
+<script type="importmap">
+{ "imports": { "three": "../vendor/three-0.184.0/three.module.min.js" } }
+</script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0c1a2e;font-family:'Share Tech Mono','Consolas',monospace;}
+  #c{width:100%;height:100%;display:block;touch-action:none;}
+  body.nd-portrait #c{height:60%;}
+  #count{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);font-size:96px;color:#00eeff;font-weight:bold;
+    text-shadow:0 0 30px rgba(0,238,255,.7);pointer-events:none;z-index:30;display:none;}
+  #lap{position:fixed;right:12px;top:150px;z-index:21;background:rgba(6,16,28,.82);border:1px solid rgba(0,238,255,.5);border-radius:10px;
+    padding:6px 12px;color:#e6f7ff;font-size:13px;line-height:1.6;pointer-events:none;min-width:120px;}
+  #lap b{color:#00eeff;font-size:16px;}
+  body.nd-portrait #lap{top:110px;font-size:11px;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="count"></div>
+<div id="lap"></div>
+<script type="module">
+import { runRace } from '../core/race.js';
+import { TRACK } from '../data/tracks/race-city.js';   // 2026-10-11 賽道資料搬到 data/tracks/（對戰模式共用），內容不變
+runRace(TRACK);
+</script>
+</body>
+</html>

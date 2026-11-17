@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<!-- newdrone 無人機飛行模擬器 © 2026 何政學（新北市立中正國民中學）｜授權 CC BY-NC-SA 4.0（姓名標示─非商業性─相同方式分享），見 LICENSE.md；請保留本聲明 -->
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEWDRONE｜我的球機</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>⚽</text></svg>">
+<!-- ============================================================
+     my-ball.html — 我的球機（v3，2026-11-17）
+     學生自己選：球框款式、球框顏色、環燈位置（外圈／球內）、隊伍（環燈紅／藍）、尾燈顏色。
+     存在這台裝置（localStorage nd3.ball），所有關卡和證書都用這顆球。
+     規則依據：FAI F9 2026 B.1.5——環燈一隊紅、一隊藍；尾燈獨立、每顆球不同色、不可用紅／藍。
+     ============================================================ -->
+<script type="importmap">
+{ "imports": { "three": "../vendor/three-0.184.0/three.module.min.js" } }
+</script>
+<link rel="stylesheet" href="../core/v3-site.css">
+<style>
+  .wrap{max-width:1180px;margin:0 auto;padding:8px 24px 40px;display:flex;flex-wrap:wrap;gap:24px;}
+  .view{flex:1 1 440px;background:var(--card);border-radius:24px;overflow:hidden;position:sticky;top:12px;align-self:flex-start;height:min(480px,70vh);min-height:340px;}
+  .view canvas{width:100%;height:100%;display:block;position:absolute;inset:0;}
+  .view .cap{position:absolute;left:18px;bottom:14px;font-size:14px;color:var(--sub);}
+  .opts{flex:1 1 420px;display:flex;flex-direction:column;gap:18px;}
+  .grp{background:var(--card);border-radius:20px;padding:18px 20px;}
+  .grp h2{margin:0 0 4px;font-size:18px;font-weight:900;}
+  .grp p.n{margin:0 0 12px;font-size:13px;color:var(--sub);line-height:1.6;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{background:var(--card2);border:2px solid var(--line);color:#F2F6FB;border-radius:12px;padding:10px 14px;font:inherit;font-weight:700;font-size:15px;cursor:pointer;}
+  .chip small{display:block;font-weight:400;font-size:11px;color:var(--sub);}
+  .chip.on{border-color:var(--acc);background:#1f4673;box-shadow:0 0 0 2px rgba(52,211,166,.25);}
+  .sw{width:44px;height:44px;border-radius:50%;border:3px solid #35507A;cursor:pointer;position:relative;padding:0;}
+  .sw.on{border-color:#fff;box-shadow:0 0 0 3px var(--acc);}
+  .sw i{position:absolute;right:-4px;top:-6px;font-style:normal;font-size:13px;}
+  .swl{font-size:11px;color:var(--sub);text-align:center;margin-top:3px;}
+  .swc{display:flex;flex-direction:column;align-items:center;width:52px;}
+  .saved{font-size:14px;color:var(--acc);min-height:20px;}
+</style>
+</head>
+<body>
+<header class="v3-top">
+  <a class="v3-brand" href="../index.html"><span class="v3-logo"></span>NEWDRONE</a>
+  <nav><a href="../index.html">← 回首頁</a></nav>
+</header>
+<section class="v3-hero sm">
+  <h1>我的球機</h1>
+  <p>選好以後，每一關飛的都是這顆球，證書上也會畫它。設定存在這台裝置上。</p>
+</section>
+<div class="wrap">
+  <div class="view"><canvas id="c"></canvas><div class="cap" id="cap"></div></div>
+  <div class="opts">
+    <div class="grp"><h2>球框款式</h2><p class="n">常見款是比賽場上常看到的樣子；原創款是 NEWDRONE 自己設計的。</p><div class="chips" id="g-cage"></div></div>
+    <div class="grp"><h2>球框顏色</h2><p class="n">挑跟環燈顏色差比較多的，環燈才看得清楚。</p><div class="chips" id="g-color"></div></div>
+    <div class="grp"><h2>隊伍（環燈顏色）</h2><p class="n">比賽規定環燈一隊紅、一隊藍。</p><div class="chips" id="g-team"></div></div>
+    <div class="grp"><h2>環燈位置</h2><p class="n">外圈：燈在球框最大那一圈，最明顯。球內：燈藏在球裡面，從縫隙透出來。</p><div class="chips" id="g-ring"></div></div>
+    <div class="grp"><h2>尾燈顏色</h2><p class="n">尾燈在球的後方下面。每顆球要不一樣，不能用紅或藍。⚠ 的顏色做成真的 LED 容易被看成紅或藍。</p><div class="chips" id="g-tail"></div></div>
+    <div class="saved" id="saved"></div>
+  </div>
+</div>
+<footer class="v3-foot"><span>開發：新北市立中正國民中學 何政學教師｜推廣：新北市立中正國中自造教育及科技中心</span><span><a href="about.html" style="color:inherit">授權：CC BY-NC-SA 4.0（作者自主開發，歡迎各校非商業使用）</a></span></footer>
+
+<script type="module">
+import * as THREE from 'three';
+import { buildSoccerCage, CAGE_STYLES, CAGE_COLORS, TAIL_COLORS, TEAM_COLORS,
+         ballPrefsGet, ballPrefsSet, ballBuildOpts, spinCageProps } from '../core/drone-soccer-cage.js';
+import { applySiteTheme } from '../core/v3-site.js';
+applySiteTheme();
+
+const $=id=>document.getElementById(id);
+const hex=n=>'#'+n.toString(16).padStart(6,'0');
+let b=ballPrefsGet();
+
+/* ── 3D 預覽 ── */
+const cv=$('c'), r=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+r.setPixelRatio(Math.min(2,devicePixelRatio));
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x0e2140);
+const cam=new THREE.PerspectiveCamera(36,1,0.05,50); cam.position.set(2.0,1.15,2.5); cam.lookAt(0,0.05,0);
+scene.add(new THREE.HemisphereLight(0x9fb8ff,0x101830,1.1));
+const sun=new THREE.DirectionalLight(0xffffff,2.2); sun.position.set(2,4,3); scene.add(sun);
+const pad=new THREE.Mesh(new THREE.CircleGeometry(0.9,48),new THREE.MeshStandardMaterial({color:0x17345e,roughness:0.9}));
+pad.rotation.x=-Math.PI/2; pad.position.y=-0.405; scene.add(pad);
+const ringPad=new THREE.Mesh(new THREE.RingGeometry(0.86,0.9,64),new THREE.MeshBasicMaterial({color:0x34d3a6}));
+ringPad.rotation.x=-Math.PI/2; ringPad.position.y=-0.4; scene.add(ringPad);
+let ball=null;
+function rebuild(){
+  if(ball){ scene.remove(ball); ball.traverse(o=>{ o.geometry&&o.geometry.dispose(); }); }
+  ball=buildSoccerCage(ballBuildOpts(b)); scene.add(ball);
+}
+function size(){ const w=cv.clientWidth,h=cv.clientHeight; r.setSize(w,h,false); cam.aspect=w/h; cam.updateProjectionMatrix(); }
+addEventListener('resize',size);
+let last=performance.now();
+r.setAnimationLoop(()=>{ const now=performance.now(), dt=Math.min(0.05,(now-last)/1000); last=now;
+  if(ball){ ball.rotation.y+=dt*0.5; spinCageProps(ball,dt,1); }
+  r.render(scene,cam); });
+
+/* ── 選項 ── */
+function chip(el,label,sub,on,fn){ const x=document.createElement('button'); x.className='chip'+(on?' on':'');
+  x.innerHTML=label+(sub?`<small>${sub}</small>`:''); x.onclick=fn; el.appendChild(x); }
+function swatch(el,color,name,on,warn,fn){ const w=document.createElement('div'); w.className='swc';
+  const x=document.createElement('button'); x.className='sw'+(on?' on':''); x.style.background=hex(color); x.title=name; x.setAttribute('aria-label',name);
+  if(warn){ x.innerHTML='<i>⚠</i>'; x.title=name+'（'+warn+'）'; } x.onclick=fn; w.appendChild(x);
+  const l=document.createElement('div'); l.className='swl'; l.textContent=name; w.appendChild(l); el.appendChild(w); }
+function paint(){
+  for(const id of ['g-cage','g-color','g-team','g-ring','g-tail'])$(id).innerHTML='';
+  CAGE_STYLES.forEach(c=>chip($('g-cage'),c.name,c.kind,b.cage===c.code,()=>set({cage:c.code})));
+  CAGE_COLORS.forEach((c,i)=>swatch($('g-color'),c.hex,c.name,b.color===i,null,()=>set({color:i})));
+  chip($('g-team'),'🔵 藍隊','',b.team==='blue',()=>set({team:'blue'}));
+  chip($('g-team'),'🔴 紅隊','',b.team==='red',()=>set({team:'red'}));
+  chip($('g-ring'),'外圈','最明顯',b.ring==='outer',()=>set({ring:'outer'}));
+  chip($('g-ring'),'球內','從縫隙透光',b.ring==='inner',()=>set({ring:'inner'}));
+  TAIL_COLORS.forEach((c,i)=>swatch($('g-tail'),c.hex,c.name,b.tail===i,c.warn,()=>set({tail:i})));
+  const cs=CAGE_STYLES.find(c=>c.code===b.cage);
+  $('cap').textContent=`${cs.name}・${CAGE_COLORS[b.color].name}・${b.team==='red'?'紅隊':'藍隊'}・環燈${b.ring==='outer'?'外圈':'球內'}・尾燈${TAIL_COLORS[b.tail].name}`;
+}
+function set(p){ b={...b,...p}; ballPrefsSet(b); rebuild(); paint(); $('saved').textContent='✔ 已儲存，下一關開始就會用這顆球。'; }
+size(); rebuild(); paint();
+</script>
+<script type="module" src="../core/gp-nav-boot.js"></script>
+</body>
+</html>
