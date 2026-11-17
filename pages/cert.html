@@ -33,7 +33,7 @@
   .msg.warn{border:2px solid var(--acc2);}
   .paper{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.35);}
   .paper canvas{width:100%;height:auto;display:block;}
-  #big{width:100%;display:none;border-radius:10px;}
+  #big{width:100%;display:none;border-radius:10px;-webkit-touch-callout:default;}
   .note{font-size:13px;color:var(--sub);line-height:1.7;}
   .todo{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;}
   .todo div{background:var(--card2);border-radius:14px;padding:14px 16px;font-size:15px;line-height:1.7;}
@@ -55,16 +55,19 @@
   <div class="msg warn" id="m" style="display:none"></div>
   <div class="bar" id="bar" style="display:none">
     <label for="nm">名字</label><input type="text" id="nm" maxlength="12" placeholder="寫上你的名字" autocomplete="off">
-    <button class="btn sec sm" id="b-photo">📷 加大頭貼</button>
+    <button class="btn sec sm" id="b-photo">🖼 加大頭貼（選照片）</button>
+    <button class="btn sec sm" id="b-cam" style="display:none">📷 拍照</button>
     <span class="sp"></span>
     <button class="btn sec sm" id="b-print">🖨️ 列印</button>
+    <button class="btn pri sm" id="b-share" style="display:none">💾 存到相簿</button>
     <button class="btn pri sm" id="b-save">⬇ 下載圖片</button>
   </div>
   <div class="paper" id="paper" style="display:none"><canvas id="cv" width="2246" height="1588" aria-label="證書"></canvas></div>
   <img id="big" alt="證書大圖（長按儲存）">
   <div class="note" id="note"></div>
   <div class="todo" id="todo"></div>
-  <input type="file" id="file" accept="image/*" capture="user">
+  <input type="file" id="file" accept="image/*">
+  <input type="file" id="file-cam" accept="image/*" capture="user">
 </div>
 <footer class="v3-foot noprint"><span>開發：新北市立中正國民中學 何政學教師｜推廣：新北市立中正國中自造教育及科技中心</span><span><a href="about.html" style="color:inherit">授權：CC BY-NC-SA 4.0（作者自主開發，歡迎各校非商業使用）</a></span></footer>
 
@@ -236,34 +239,50 @@ function draw(d,{photo,ball,qr,code}){
   x.textAlign='center'; x.fillStyle='#3A4F6E'; x.font='400 13px '+FONT; x.fillText('發證單位',SX+SW/2,SY+SW+22);
 }
 
-/* ── 存檔 ── */
-const blob=()=>new Promise(res=>$('cv').toBlob(res,'image/png'));
+/* ── 存檔 ──
+   v3 11/17 老師實測「存相簿好像不會下載」「相片不能用」→ 改成：
+   · 每次證書畫好就先把圖片檔準備好，按鈕一按就直接叫分享選單（iPhone 規定要「一按就叫」，
+     先等圖片產生再叫會被擋，舊版就是這樣失敗的）；
+   · 手機上證書直接用圖片顯示，隨時都能長按儲存；下載按鈕也一直都在；
+   · 照片可以「拍照」也可以「從相簿選」（有些瀏覽器不准直接開鏡頭）。 */
+let _blob=null, _file=null, _url=null;
 const fname=d=>`無人機飛行員體驗證書_${d.n||'飛行員'}.png`;
-async function download(d){ const b=await blob(), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=fname(d); document.body.appendChild(a); a.click(); a.remove(); }
-async function saveToPhone(d){
-  const b=await blob(), f=new File([b],fname(d),{type:'image/png'});
-  if(navigator.canShare&&navigator.canShare({files:[f]})){
-    try{ await navigator.share({files:[f],title:'無人機飛行員體驗證書'}); $('note').textContent='在分享選單選「儲存影像」就會存進相簿。'; return; }
-    catch(e){ if(e.name==='AbortError')return; }
-  }
-  // 不能用分享選單（iPad／舊 iOS）→ 顯示大圖讓他長按
-  const im=$('big'); im.src=URL.createObjectURL(b); im.style.display='block'; $('paper').style.display='none';
-  $('note').innerHTML='<b>長按上面的圖片</b>，選「加入照片」或「儲存影像」。';
-  im.scrollIntoView({behavior:'smooth'});
+function prepare(d){
+  $('cv').toBlob(b=>{ if(!b)return; _blob=b; _file=new File([b],fname(d),{type:'image/png'});
+    if(_url)URL.revokeObjectURL(_url); _url=URL.createObjectURL(b);
+    if(phone){ $('big').src=_url; }
+    $('b-share').style.display=(phone&&navigator.canShare&&navigator.canShare({files:[_file]}))?'':'none';
+  },'image/png');
+}
+function download(d){
+  if(!_url)return;
+  const a=document.createElement('a'); a.href=_url; a.download=fname(d); document.body.appendChild(a); a.click(); a.remove();
+  if(phone)$('note').innerHTML='如果沒有看到下載，請<b>長按上面的證書圖片</b> →「加入照片」或「儲存影像」。';
+}
+function share(d){
+  if(!_file)return;
+  navigator.share({files:[_file],title:'無人機飛行員體驗證書'})
+    .then(()=>{ $('note').textContent='在分享選單選「儲存影像」或「儲存到相簿」就存好了。'; })
+    .catch(e=>{ if(e&&e.name==='AbortError')return;
+      $('note').innerHTML='這支手機的分享選單打不開，請<b>長按上面的證書圖片</b> →「加入照片」，或按「下載圖片」。'; });
 }
 
 /* ── 照片 ── */
 let photo=null;
-$('file').addEventListener('change',async e=>{
-  const f=e.target.files&&e.target.files[0]; if(!f)return;
-  const im=new Image(); im.src=URL.createObjectURL(f);
-  try{ await im.decode(); }catch{ return; }
-  // 先縮小（手機照片很大）
-  const s=Math.min(im.width,im.height), c=document.createElement('canvas'); c.width=c.height=480;
-  c.getContext('2d').drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,480,480);
-  photo=c; render();
-});
+async function loadPhoto(f){
+  if(!f)return;
+  let src=null;
+  try{ src=await createImageBitmap(f,{imageOrientation:'from-image'}); }catch{}
+  if(!src){ try{ const im=new Image(); im.src=URL.createObjectURL(f); await im.decode(); src=im; }catch{} }
+  if(!src){ $('note').innerHTML='這張照片讀不出來，換一張試試（iPhone 若是 HEIC 格式，請改用「拍照」）。'; return; }
+  const w=src.width,h=src.height, s=Math.min(w,h), c=document.createElement('canvas'); c.width=c.height=480;
+  c.getContext('2d').drawImage(src,(w-s)/2,(h-s)/2,s,s,0,0,480,480);
+  photo=c; render(); $('note').textContent='照片放進去了，可以存到相簿了。';
+}
+$('file').addEventListener('change',e=>{ loadPhoto(e.target.files&&e.target.files[0]); e.target.value=''; });
+$('file-cam').addEventListener('change',e=>{ loadPhoto(e.target.files&&e.target.files[0]); e.target.value=''; });
 $('b-photo').addEventListener('click',()=>$('file').click());
+$('b-cam').addEventListener('click',()=>$('file-cam').click());
 
 /* ── 主流程 ── */
 const hash=location.hash.match(/^#c=([\w-]+)/);
@@ -279,7 +298,9 @@ function render(){
   const link=linkFor(data); window.__certLink=link;
   const qr=qrCanvas(link);
   draw(data,{photo,ball,qr,code});
-  $('big').style.display='none'; $('paper').style.display='block';
+  // 手機：證書用圖片顯示（可以長按存）；電腦：用畫布
+  $('big').style.display=phone?'block':'none'; $('paper').style.display=phone?'none':'block';
+  prepare(data);
 }
 
 async function main(){
@@ -288,12 +309,19 @@ async function main(){
     if(!data||!Array.isArray(data.s)){ $('m').style.display='block'; $('m').innerHTML='這個證書連結讀不出來，可能沒有掃完整。請回電腦再掃一次 QR。'; return; }
     const ok=data.k===checkCode(data);
     $('h1').textContent=(data.n||'飛行員')+' 的體驗證書';
-    $('lead').textContent='按「拍大頭貼」放進證書，再按「存到相簿」。照片只在這支手機上合成，不會上傳。';
+    $('lead').textContent='拍一張或從相簿選一張大頭貼，再存到相簿。照片只在這支手機上合成，不會上傳。';
     $('nm').value=data.n||''; $('nm').readOnly=true;
-    $('b-photo').textContent='📷 拍大頭貼';
+    $('b-photo').textContent='🖼 從相簿選';
+    $('b-cam').style.display='';
     $('b-print').style.display='none';
-    $('b-save').textContent='💾 存到相簿';
-    $('b-save').onclick=()=>saveToPhone(data);
+    $('b-share').onclick=()=>share(data);
+    $('b-save').textContent='⬇ 下載圖片';
+    $('b-save').onclick=()=>download(data);
+    $('note').innerHTML='加好大頭貼後按「存到相簿」；也可以<b>長按證書圖片</b>直接存。';
+    // LINE、FB、IG 內建瀏覽器常常不能拍照、不能下載
+    if(/Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent)){
+      $('m').style.display='block';
+      $('m').innerHTML='你現在用的是 App 內建的瀏覽器，可能不能拍照或存圖。請點右上角「⋯」→「用瀏覽器開啟」（Chrome 或 Safari）。'; }
     if(!ok){ $('m').style.display='block'; $('m').innerHTML='⚠ 查驗碼對不上：這個連結的內容被改過，證書上的成績可能不是真的。'; }
     $('home').textContent='去玩 NEWDRONE';
   }else{
