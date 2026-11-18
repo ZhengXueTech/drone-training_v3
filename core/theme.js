@@ -234,6 +234,7 @@ const _box=new THREE.Box3();
 /* 往下打一條射線找「球底下最高的實心頂面」（只在球離地很近時才打，省效能）。
    略過：球自己、透明物件（光柱、光暈、圓環）、線條、看不見的東西、太陡的面。 */
 const _ray=new THREE.Raycaster(), _down=new THREE.Vector3(0,-1,0), _o=new THREE.Vector3();
+_ray.camera=new THREE.PerspectiveCamera();   // 11-17 修：場景裡有 Sprite（賽道標示）時，Raycaster 一定要有 camera 才不會當掉；Sprite 結果下面本來就會略過
 function surfaceBelow(mesh,footR){
   const sc=mesh.parent; if(!sc||footR<0.15)return 0;            // 足球場的小球：場地是平的，不用找（觀眾席物件很多，省效能）
   const reach=footR*2.2+1.2;

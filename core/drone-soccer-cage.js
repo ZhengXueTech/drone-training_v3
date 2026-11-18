@@ -61,14 +61,15 @@ export function cageOpenAreas(style='globe'){
 }
 /* 常見款「地球儀式」球框（老師提供的市售 20 cm 球照片）：
    經線肋條＋幾圈緯線、頂部小圈、底部是平的大圓開口、赤道一圈較寬的燈帶。 */
-const MERID=12, LATS=[-30,30,55], TOP_LAT=80;
+const MERID=12, LATS=[-30,30,55], TOP_LAT=80, MERID_ROT=15;
 const BASE_LAT=Math.asin(BASE_Y/R)*180/Math.PI;   // 約 -53°
 function sph(latDeg,lonDeg){ const la=latDeg*Math.PI/180, lo=lonDeg*Math.PI/180;
   return new THREE.Vector3(Math.cos(la)*Math.cos(lo)*R, Math.sin(la)*R, Math.cos(la)*Math.sin(lo)*R); }
 function globeEdges(){
   const out=[], seg=(pts,closed)=>{ for(let i=0;i<pts.length-(closed?0:1);i++) out.push([pts[i],pts[(i+1)%pts.length]]); };
   // 經線：從底座到頂圈
-  for(let m=0;m<MERID;m++){ const lo=m*360/MERID, pts=[];
+  // 2026-11-17 老師決定：整圈轉 15°（MERID_ROT），機頭／機尾落在開口中間、不擋尾燈
+  for(let m=0;m<MERID;m++){ const lo=MERID_ROT+m*360/MERID, pts=[];
     for(let k=0;k<=12;k++) pts.push(sph(BASE_LAT+(TOP_LAT-BASE_LAT)*k/12,lo)); seg(pts,false); }
   // 緯線圈＋頂圈＋底座圈（底座圈＝平底的大圓開口）
   for(const lat of [...LATS,TOP_LAT,BASE_LAT]){ const pts=[];
@@ -109,20 +110,54 @@ function orbitEdges(){
 /* 燈籠款（老師的構想，2026-11-17）：碳纖棒彎成弧線當經線，上圈／赤道圈／底座圈是
    3D 列印件（硬料），棒子交會處用軟料小夾扣卡住——結構像中式燈籠骨架。
    開口：12 支棒＋三圈 → 側面每格約 42～46 cm²（20 cm 實物），在韓國規則 70 cm² 內。 */
-const LAN_RODS=12, LAN_TOP=62;
-function lanternRods(){
+const LAN_RODS=12, LAN_TOP=62, LAN_ROT=15;
+/* 頂部三種（2026-11-17 老師決定都開放選）：
+   'disc'＝頂上有列印圓盤（可以拿來頂人）；
+   'fai' ＝沒圓盤、頂圈開大一點（lat 50，頂部開口約 130 cm²，FAI ≤150）；
+   'kr'  ＝沒圓盤、頂圈 lat 62＋頂部和底部各加十字（每格都 <70 cm²，韓國規則）。 */
+const LAN_TOPS={disc:62, fai:50, kr:62};
+function lanternRods(topLat=LAN_TOP){
   const out=[];
-  for(let m=0;m<LAN_RODS;m++){ const lo=m*360/LAN_RODS, pts=[];
-    for(let k=0;k<=20;k++) pts.push(sph(BASE_LAT+(LAN_TOP-BASE_LAT)*k/20,lo));
+  for(let m=0;m<LAN_RODS;m++){ const lo=LAN_ROT+m*360/LAN_RODS, pts=[];
+    for(let k=0;k<=20;k++) pts.push(sph(BASE_LAT+(topLat-BASE_LAT)*k/20,lo));
     for(let i=0;i<20;i++) out.push([pts[i],pts[i+1]]); }
   return out;
 }
-export function lanternAreas(rods=LAN_RODS){
+export function lanternAreas(rods=LAN_RODS,top='disc'){
+  const topLat=LAN_TOPS[top]||LAN_TOP;
   const k=10, z=(a,b)=>2*Math.PI*k*k*Math.abs(Math.sin(b*Math.PI/180)-Math.sin(a*Math.PI/180))/rods;
-  const rt=Math.cos(LAN_TOP*Math.PI/180)*k, rb=Math.cos(BASE_LAT*Math.PI/180)*k;
-  return {upper:Math.round(z(0,LAN_TOP)), lower:Math.round(z(BASE_LAT,0)), top:Math.round(Math.PI*rt*rt), bottom:Math.round(Math.PI*rb*rb)};
+  const rt=Math.cos(topLat*Math.PI/180)*k, rb=Math.cos(BASE_LAT*Math.PI/180)*k;
+  const out={upper:Math.round(z(0,topLat)), lower:Math.round(z(BASE_LAT,0)), bottom:Math.round(Math.PI*rb*rb)};
+  if(top==='kr'){ out.top=Math.round(Math.PI*rt*rt/4); out.bottom=Math.round(Math.PI*rb*rb/4); out.cross=true; }   // 11-17：韓國版頂、底都加十字 → 每格＝1/4
+  else out.top=Math.round(Math.PI*rt*rt);
+  if(top==='disc') out.top=0;   // 有圓盤＝頂部封住
+  return out;
 }
 
+/* 11-17：給驗收用——依球機設定列出各開口面積（cm²，實物 20 cm）。
+   complete=false 表示還沒算的款式（目前全部都算了）。 */
+export function ballOpenAreas(b){
+  const k=10, kr=b.top==='kr', disk=r=>Math.PI*r*r, out=[];
+  const cross=(name,r)=>{ if(kr) out.push([name+'每格',disk(r)/4]); else out.push([name,disk(r)]); };   // 韓國版＝十字切 4 格
+  const rb=Math.cos(BASE_LAT*Math.PI/180)*k, rTop=Math.sqrt(R*R-TOP_Y*TOP_Y)/R*k;
+  let complete=true;
+  if(b.cage==='lantern'){ const A=lanternAreas(LAN_RODS,b.top||'disc');
+    out.push(['側面',Math.max(A.upper,A.lower)]);
+    if(A.top) out.push([A.cross?'頂部每格':'頂部',A.top]);
+    out.push([A.cross?'底部每格':'底部',A.bottom]);
+    return {parts:out.map(([n,a])=>[n,Math.round(a)]),complete:true,topClosed:!A.top}; }
+  if(b.cage==='globe'){ out.push(['側面',globeAreas().side],['頂部',disk(Math.cos(TOP_LAT*Math.PI/180)*k)]); }
+  else if(b.cage==='soccer'){ const a=cageOpenAreas('soccer'); out.push(['五角形',a.pent],['六角形',a.hex]); cross('頂部',rTop); }
+  else if(b.cage==='honey'){ out.push(['側面細網',14]); cross('頂部',rTop); }
+  // 11-17 晚：Z紋／螺旋／軌道環用球面格點逐格量出來（含赤道燈帶當分隔；誤差約 ±4%）
+  else if(b.cage==='zig'){ out.push(['側面',12],['頂部',23]); }
+  else if(b.cage==='spiral'){ out.push(['側面',19],['頂部',18]); }
+  else if(b.cage==='orbit'){ out.push(['側面',35]); cross('頂部',rTop); }   // 加頂圈後：側面最大 35、頂部平面 92
+  else if(b.cage==='clear'){ out.push(['側面',26],['頂部',disk(Math.cos(TOP_LAT*Math.PI/180)*k)]); }   // 透明殼＝地球儀骨架
+  else complete=false;
+  cross('底部',rb);
+  return {parts:out.map(([n,a])=>[n,Math.round(a)]),complete};
+}
 /* 開口面積（cm²，以實物直徑 20 cm 換算，球面帶狀分格精算） */
 function globeAreas(){
   const k=10, zone=(a,b)=>2*Math.PI*k*k*Math.abs(Math.sin(b*Math.PI/180)-Math.sin(a*Math.PI/180))/MERID;
@@ -134,10 +169,21 @@ function globeAreas(){
 
 const TOP_Y=0.42;     // 頂部開口平面（足球紋路、蜂巢款上面多一圈開口，照實物照片）
 /* 把框條夾在底座與頂圈兩個平面之間；兩端都被壓到同一平面的條子丟掉（那裡改由圈補上） */
+/* 11-17 晚改：桿件超出平底／頂部平面時，在「平面跟球面相交」那一點切斷，端點剛好落在底圈／頂圈上。
+   舊寫法只把 y 壓平，端點會停在圈內側變成懸空的短桿（蜂巢、軌道環頂部各有幾根）——
+   老師：球框不能有凸起物（會戳到敵方飛機），所以不能留懸空的桿頭。 */
 function clampPairs(pairs,top=true){
-  const cl=p=>{ const q=p.clone(); if(q.y<BASE_Y)q.y=BASE_Y; if(top&&q.y>TOP_Y)q.y=TOP_Y; return q; };
-  return pairs.map(([a,b])=>[cl(a),cl(b)])
-    .filter(([a,b])=>a.distanceTo(b)>0.02 && !((a.y===BASE_Y&&b.y===BASE_Y)||(a.y===TOP_Y&&b.y===TOP_Y)));
+  const cut=(a,b,y)=>{ const t=(y-a.y)/(b.y-a.y), p=a.clone().lerp(b,t), h=Math.hypot(p.x,p.z)||1, r=Math.sqrt(R*R-y*y);
+    p.x*=r/h; p.z*=r/h; p.y=y; return p; };            // a 在平面內側、b 在外側 → 回傳交點（貼在圈上）
+  const out=[];
+  for(let [a,b] of pairs){
+    if(a.y<=BASE_Y&&b.y<=BASE_Y)continue;
+    if(top&&a.y>=TOP_Y&&b.y>=TOP_Y)continue;
+    if(a.y<BASE_Y)a=cut(b,a,BASE_Y); else if(b.y<BASE_Y)b=cut(a,b,BASE_Y);
+    if(top){ if(a.y>TOP_Y)a=cut(b,a,TOP_Y); else if(b.y>TOP_Y)b=cut(a,b,TOP_Y); }
+    if(a.distanceTo(b)>0.003)out.push([a,b]);
+  }
+  return out;
 }
 function cageEdges(){ return clampPairs(soccerFaces().edges); }
 /* 蜂巢款（細密六角網，照片裡藍色／橘色那種）：細分二十面體的「對偶」——
@@ -182,6 +228,17 @@ export const TAIL_COLORS=[
   {name:'青',hex:0x00d0ff,warn:'接近藍'},{name:'金',hex:0xffc000},{name:'粉',hex:0xff8fd0},{name:'暖白',hex:0xffd9a0},
 ];
 export const TEAM_COLORS={red:0xff2a2a, blue:0x2a6bff};
+/* 燈籠列印件顏色＝中正基本色調（2026-11-17 老師決定）：白＋校服藍／橘／青（色碼照公開得獎照片估，可再調） */
+export const PRINT_COLORS={
+  white:{name:'白',hex:0xf2f4f5}, blue:{name:'校服藍',hex:0x58b4e6},
+  orange:{name:'校服橘',hex:0xff6a1a}, cyan:{name:'青',hex:0x16b3a4},
+};
+/* 球框跟環燈同色系＝環燈分不清楚，違反規定（環燈要清楚可辨）→ 回傳提醒文字；沒撞色回傳 null。只提醒、不擋選擇。 */
+export function printColorClash(team,printKey){
+  if(team==='blue'&&printKey==='blue') return '藍隊配校服藍球框：環燈跟球框都是藍色，裁判分不清楚——這樣違反規定（環燈必須清楚可辨），比賽請換顏色。';
+  if(team==='red'&&printKey==='orange') return '紅隊配校服橘球框：環燈跟球框顏色太接近，裁判分不清楚——這樣違反規定（環燈必須清楚可辨），比賽請換顏色。';
+  return null;
+}
 
 /* 把球裡「不會動、不透明」的零件，依材質合併成一個網格（機架、馬達、LED、尾燈、圓圈、列印件…）。
    槳（會轉）、InstancedMesh（球框桿件，本來就是一次畫完）、半透明光暈都不動。
@@ -226,7 +283,8 @@ function glowTexture(){
   x.fillStyle=gr; x.fillRect(0,0,64,64);
   _glowTex=new THREE.CanvasTexture(c); return _glowTex;
 }
-export function buildSoccerCage({tint=0x3399ff,team=null,scale=1,tail=0xffffff,striker=false,cage='globe',cageColor=0xdfe5ee,ring='outer',printColor=0xff7a1a}={}){
+export function buildSoccerCage({tint=0x3399ff,team=null,scale=1,tail=0xffffff,striker=false,cage='globe',cageColor=0xdfe5ee,ring='outer',printColor=0xff7a1a,top='disc'}={}){
+  if(typeof printColor==='string'&&PRINT_COLORS[printColor]) printColor=PRINT_COLORS[printColor].hex;
   const ringPos=ring;
   // team 指定時環燈用規定的紅／藍；前鋒尾燈＝對方隊色
   if(team&&TEAM_COLORS[team]) tint=TEAM_COLORS[team];
@@ -249,23 +307,41 @@ export function buildSoccerCage({tint=0x3399ff,team=null,scale=1,tail=0xffffff,s
     // 碳纖棒（深色、細）＋列印件（printColor：上圈、赤道圈、底座圈、夾扣）
     const rodM=new THREE.MeshStandardMaterial({color:0x15171b,metalness:0.4,roughness:0.35});
     const prtM=new THREE.MeshStandardMaterial({color:printColor,roughness:0.7});
-    g.add(makeStruts(lanternRods(),0.009,rodM));
+    const topLat=LAN_TOPS[top]||LAN_TOP;
+    g.add(makeStruts(lanternRods(topLat),0.009,rodM));
     const ringAt=(y,tube,h)=>{ const m=new THREE.Mesh(new THREE.TorusGeometry(rAt(y),tube,8,48),prtM);
       m.rotation.x=Math.PI/2; m.position.y=y; m.scale.z=h||1; g.add(m); };
-    const yTop=Math.sin(LAN_TOP*Math.PI/180)*R;
+    const yTop=Math.sin(topLat*Math.PI/180)*R;
     ringAt(yTop,0.022); ringAt(BASE_Y,0.024);
-    // 頂蓋：燈籠頂的小圓盤（列印件）
-    const cap=new THREE.Mesh(new THREE.CylinderGeometry(rAt(yTop)*0.55,rAt(yTop)*0.8,0.03,24),prtM);
-    cap.position.y=yTop+0.02; g.add(cap);
+    if(top==='disc'){
+      // 頂蓋：燈籠頂的小圓盤（列印件，可以拿來頂人）
+      const cap=new THREE.Mesh(new THREE.CylinderGeometry(rAt(yTop)*0.55,rAt(yTop)*0.8,0.03,24),prtM);
+      cap.position.y=yTop+0.02; g.add(cap);
+    } else if(top==='kr'){
+      // 韓國規則版（11-17 老師選十字）：頂部、底部各加兩根對角交叉的碳纖棒，每格約 17／28 cm²
+      const xs=[]; for(const y of [yTop,BASE_Y]) for(let q=0;q<2;q++){ const a=(45+q*90)*Math.PI/180, c=Math.cos(a)*rAt(y), s2=Math.sin(a)*rAt(y);
+        xs.push([new THREE.Vector3(-c,y,-s2),new THREE.Vector3(c,y,s2)]); }
+      g.add(makeStruts(xs,0.009,rodM));
+    }
     // 棒子跟上／下／赤道圈交會處的夾扣（軟料小塊）
     const clipG=new THREE.BoxGeometry(0.04,0.045,0.03);
-    for(let m=0;m<LAN_RODS;m++) for(const lat of [LAN_TOP,0,BASE_LAT]){
-      const c=new THREE.Mesh(clipG,prtM); c.position.copy(sph(lat,m*360/LAN_RODS)); c.lookAt(0,c.position.y,0); g.add(c); }
+    for(let m=0;m<LAN_RODS;m++) for(const lat of [topLat,0,BASE_LAT]){
+      const c=new THREE.Mesh(clipG,prtM); c.position.copy(sph(lat,LAN_ROT+m*360/LAN_RODS)); c.lookAt(0,c.position.y,0); g.add(c); }
   }
   else if(cage==='zig'){ g.add(makeStruts(zigEdges(),0.011,cageM)); hoop(BASE_Y,0.02); }
   else if(cage==='spiral'){ g.add(makeStruts(spiralEdges(),0.012,cageM)); hoop(BASE_Y,0.02); }
-  else if(cage==='orbit'){ g.add(makeStruts(orbitEdges(),0.012,cageM)); hoop(BASE_Y,0.02); }
+  else if(cage==='orbit'){ g.add(makeStruts(orbitEdges(),0.012,cageM)); hoop(BASE_Y,0.02); hoop(TOP_Y,0.017); }   // 11-17 晚：加頂圈（原本頂部連成 151 cm² 超過 FAI 150）
   else { g.add(makeStruts(globeEdges(),clear?0.02:0.012,cageM)); hoop(BASE_Y,clear?0.026:0.02); }
+  // 11-17 老師：其他款也有「韓國版」（top='kr'）——底部平底大開口加十字（兩根對角交叉）；
+  // 足球紋路／蜂巢的頂部開口（約 92 cm²）也一樣加。燈籠款在上面自己處理。
+  if(top==='kr'&&cage!=='lantern'){
+    const krCross=y=>{ const ro=rAt(y), sp=[];
+      for(let q=0;q<2;q++){ const a=(45+q*90)*Math.PI/180;
+        sp.push([new THREE.Vector3(-Math.cos(a)*ro,y,-Math.sin(a)*ro),new THREE.Vector3(Math.cos(a)*ro,y,Math.sin(a)*ro)]); }
+      g.add(makeStruts(sp,0.01,cageM)); };
+    krCross(BASE_Y);
+    if(cage==='soccer'||cage==='honey'||cage==='orbit') krCross(TOP_Y);
+  }
   // 赤道圈：外框最大那一圈（燈放外圈時它就是燈帶）
   const band=new THREE.Mesh(new THREE.CylinderGeometry(R*1.01,R*1.01,ring==='outer'?0.06:0.03,64,1,true),
     clear?cageM:new THREE.MeshStandardMaterial({color:cage==='lantern'?printColor:cageColor,roughness:0.6,side:THREE.DoubleSide}));
@@ -301,6 +377,34 @@ export function buildSoccerCage({tint=0x3399ff,team=null,scale=1,tail=0xffffff,s
   // ring＝'outer'：長在外框最大那圈上｜'inner'：小圈躲在球內、貼在機架下方
   // 規則重點是「環燈要明顯、分得出來」，球框本身沒有硬性樣式。
   const ledM=new THREE.MeshBasicMaterial({color:tint});
+  // 2026-11-17 新增三種實機燈位（老師決定全部開放自由選，不跟機型綁）：
+  // 'dome'＝頂部燈罩（TC 200I 的 H7 燈罩、GT2：Ø50 環燈板在機身中央頂部）
+  // 'waist'＝腰帶燈（Balkin-S3：燈條貼原廠白色圓環，r≈61 mm、機臂下方）
+  // 'frame'＝兩排燈框（TC 200I v6：環燈列在上、尾燈列在下，燈框 Ø135）
+  const XR={dome:{r:0.115,y:0.045,w:0.018,h:0.016},waist:{r:0.31,y:-0.035,w:0.026,h:0.02},frame:{r:0.343,y:-0.018,w:0.024,h:0.02}}[ringPos];
+  if(XR){
+    const ringG=new THREE.Group();
+    for(let i=0;i<16;i++){ const a=i/16*Math.PI*2, d=new THREE.Mesh(new THREE.BoxGeometry(XR.w,XR.h,0.01),ledM);
+      d.position.set(Math.cos(a)*XR.r,XR.y,Math.sin(a)*XR.r); d.lookAt(0,XR.y,0); ringG.add(d); }
+    if(ringPos==='dome'){   // 半透明燈罩
+      const dome=new THREE.Mesh(new THREE.SphereGeometry(0.13,28,10,0,Math.PI*2,0,Math.PI/2),
+        new THREE.MeshStandardMaterial({color:0xf4f7fb,transparent:true,opacity:0.35,roughness:0.3,depthWrite:false}));
+      dome.scale.y=0.55; dome.position.y=0.02; ringG.add(dome);
+    } else if(ringPos==='waist'){   // 原廠白色圓環
+      const hoopW=new THREE.Mesh(new THREE.CylinderGeometry(0.305,0.305,0.03,48,1,true),
+        new THREE.MeshStandardMaterial({color:0xe8ecef,roughness:0.6,side:THREE.DoubleSide}));
+      hoopW.position.y=XR.y; ringG.add(hoopW);
+    } else {   // 列印燈框（深灰）：環燈列＋下方尾燈列
+      const fr=new THREE.Mesh(new THREE.CylinderGeometry(0.338,0.338,0.075,48,1,true),
+        new THREE.MeshStandardMaterial({color:0x2b2f36,roughness:0.7,side:THREE.DoubleSide}));
+      fr.position.y=XR.y-0.025; ringG.add(fr);
+    }
+    g.add(ringG);
+    const glowX=new THREE.Mesh(new THREE.TorusGeometry(XR.r*1.01,0.035,8,64),
+      new THREE.MeshBasicMaterial({color:tint,transparent:true,opacity:0.3,blending:THREE.AdditiveBlending,depthWrite:false}));
+    glowX.rotation.x=Math.PI/2; glowX.position.y=XR.y; g.add(glowX);
+    g.userData.ring=ringG;
+  } else {
   const inner=ringPos==='inner';
   const rr=inner?0.27:R*1.022, ry=inner?-0.03:0;
   const ledG=new THREE.BoxGeometry(inner?0.034:0.03,0.026,0.012);
@@ -315,10 +419,11 @@ export function buildSoccerCage({tint=0x3399ff,team=null,scale=1,tail=0xffffff,s
       blending:THREE.AdditiveBlending,depthWrite:false}));
   ringGlow.rotation.x=Math.PI/2; ringGlow.position.y=ry; g.add(ringGlow);
   g.userData.ring=ringG;
+  }
 
   // ── 尾燈：機尾（+Z）外殼內側、環燈下方，6 顆 LED 沿球面排成一小段弧（v3 11/17 老師回饋：原本藏在
   //    中央被環燈擋住、從後面看不到，反而從前面透過球框看得到；改到後方外緣、放大、加光暈）──
-  const TY=-0.135, TR=0.455;
+  const TY=ringPos==='frame'?-0.06:-0.135, TR=ringPos==='frame'?0.35:0.455;   // 11-17：兩排燈框時尾燈在燈框下排（v6 實機）
   const tailM=new THREE.MeshBasicMaterial({color:tail});
   for(let i=0;i<6;i++){ const a=(i-2.5)*0.085;
     const d=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.034,0.02),tailM);
@@ -360,9 +465,37 @@ export const CAGE_STYLES=[
 export const CAGE_COLORS=[
   {name:'霧銀',hex:0xdfe5ee},{name:'碳黑',hex:0x30343c},{name:'雪白',hex:0xf7f7f2},
   {name:'螢光黃',hex:0xe8ff3a},{name:'薄荷綠',hex:0x5fe0b8},{name:'紫羅蘭',hex:0x9d7bff},
+  // 11-17 老師：加中正基本色調（校服藍／橘／青，照公開得獎照片估；白色跟原本「雪白」重複，不另加），原本 6 色也都保留。
+  // clash＝跟哪一隊的環燈同色系（同色系＝環燈分不清楚，違反規定 → 只提醒不擋）
+  {name:'校服藍',hex:0x58b4e6,zz:true,clash:'blue'},
+  {name:'校服橘',hex:0xff6a1a,zz:true,clash:'red'},{name:'青',hex:0x16b3a4,zz:true},
 ];
+/* 環燈位置（11-17 老師：全部開放自由選，不跟機型綁；標註對應哪台實機） */
+export const RING_POS=[
+  {code:'outer',name:'外圈',sub:'最明顯'},
+  {code:'inner',name:'球內',sub:'從縫隙透光'},
+  {code:'dome', name:'頂部燈罩',sub:'像 TC 200I、GT2'},
+  {code:'waist',name:'腰帶燈',sub:'像 Balkin-S3'},
+  {code:'frame',name:'兩排燈框',sub:'像 TC 200I 燈框'},
+];
+/* 燈籠款頂部（11-17 老師：三種都開放選） */
+export const LANTERN_TOPS=[
+  {code:'disc',name:'有圓盤',sub:'可以頂人'},
+  {code:'fai', name:'FAI 版',sub:'頂部開口 ≤150 cm²'},
+  {code:'kr',  name:'韓國版',sub:'頂部＋底部每格 <70 cm²'},
+];
+/* 其他款的規則版本（11-17）：一般／韓國版（底部加十字；足球紋路、蜂巢、軌道環頂部也加） */
+export const KR_OPTS=[
+  {code:'disc',name:'一般版',sub:'FAI 規則'},
+  {code:'kr',  name:'韓國版',sub:'底部加十字，每格 <70 cm²'},
+];
+/* 撞色檢查：球框（燈籠是列印件）跟環燈同色系 → 回傳提醒文字；沒撞色回傳 null */
+export function ballClash(b){
+  const c=CAGE_COLORS[b.color]; if(!c||!c.clash||c.clash!==b.team) return null;
+  return `${b.team==='blue'?'藍隊':'紅隊'}配「${c.name}」球框：環燈跟球框顏色太接近，裁判分不清楚——這樣違反規定（環燈必須清楚可辨），比賽請換顏色。`;
+}
 const BALL_KEY='nd3.ball';
-export const BALL_DEFAULT={cage:'globe',ring:'outer',team:'blue',tail:0,color:0};
+export const BALL_DEFAULT={cage:'globe',ring:'outer',team:'blue',tail:0,color:0,top:'disc'};
 export function ballPrefsGet(){
   let b={...BALL_DEFAULT};
   try{ const s=JSON.parse(localStorage.getItem(BALL_KEY)||'null');
@@ -371,9 +504,11 @@ export function ballPrefsGet(){
   }catch{}
   try{ const q=new URLSearchParams(location.search);
     if(CAGE_STYLES.some(c=>c.code===q.get('ball')))b.cage=q.get('ball');
-    if(['outer','inner'].includes(q.get('ring')))b.ring=q.get('ring'); }catch{}
+    if(RING_POS.some(r=>r.code===q.get('ring')))b.ring=q.get('ring');
+    if(LANTERN_TOPS.some(t=>t.code===q.get('top')))b.top=q.get('top'); }catch{}
   if(!CAGE_STYLES.some(c=>c.code===b.cage))b.cage=BALL_DEFAULT.cage;
-  if(!['outer','inner'].includes(b.ring))b.ring='outer';
+  if(!RING_POS.some(r=>r.code===b.ring))b.ring='outer';
+  if(!LANTERN_TOPS.some(t=>t.code===b.top))b.top='disc';
   if(!TEAM_COLORS[b.team])b.team='blue';
   b.tail=Math.max(0,Math.min(TAIL_COLORS.length-1,b.tail|0));
   b.color=Math.max(0,Math.min(CAGE_COLORS.length-1,b.color|0));
@@ -384,14 +519,16 @@ export function ballPrefsGet(){
 export const BALL_STARTERS=['globe','lantern','spiral','soccer'];
 export function randomBall(){
   const r=n=>Math.floor(Math.random()*n);
-  return {cage:BALL_STARTERS[r(BALL_STARTERS.length)],ring:'outer',team:r(2)?'red':'blue',
+  const team=r(2)?'red':'blue';
+  let color; do{ color=r(CAGE_COLORS.length); }while(CAGE_COLORS[color].clash===team);   // 11-17：不隨機發到撞色（違規）的組合
+  return {cage:BALL_STARTERS[r(BALL_STARTERS.length)],ring:'outer',team,color,
           tail:(()=>{ const ok=TAIL_COLORS.map((c,i)=>c.warn?-1:i).filter(i=>i>=0); return ok[r(ok.length)]; })(),   // 不發 ⚠ 慎用色
-          color:r(CAGE_COLORS.length)};
+  };
 }
 export function ballPrefsSet(b){ try{ localStorage.setItem(BALL_KEY,JSON.stringify(b)); }catch{} }
 /* 設定 → buildSoccerCage 參數 */
 export function ballBuildOpts(b=ballPrefsGet()){
-  const o={cage:b.cage,ring:b.ring,team:b.team,tail:TAIL_COLORS[b.tail].hex,cageColor:CAGE_COLORS[b.color].hex};
+  const o={cage:b.cage,ring:b.ring,team:b.team,tail:TAIL_COLORS[b.tail].hex,cageColor:CAGE_COLORS[b.color].hex,top:b.top||'disc'};
   if(b.cage==='lantern'&&b.color>0)o.printColor=o.cageColor;     // 燈籠款：棒子固定碳纖黑，顏色換在列印件上（預設霧銀＝原本的橘色列印件）
   return o;
 }

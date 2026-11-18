@@ -53,17 +53,55 @@
   .nav #b-next:disabled{background:#0e2238;color:#5b7f95;border-color:#234;box-shadow:none;font-weight:normal;cursor:default;}
   .nav .mid{flex:1;text-align:center;font-size:12px;color:#7aa3b8;}
   details{margin-top:6px;} summary{cursor:pointer;color:#9fc3d8;font-size:13px;}
+
+/* ── v3（2026-11-17）：外觀跟首頁一致（老師：搖桿設定從簡單突然變超複雜）── */
+body{background:#0B1B33;color:#F2F6FB;font-family:system-ui,-apple-system,"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif;padding:18px 24px 40px;}
+.wrap{max-width:980px;}
+h1{color:#F2F6FB;font-size:28px;font-weight:900;letter-spacing:0;}
+h2{color:#34D3A6;font-size:17px;font-weight:900;}
+p{font-size:15px;} .sub{color:#B4C3D8;font-size:13px;} .big{font-size:24px;font-weight:700;}
+.box{background:rgba(19,42,77,.9);border:1px solid #35507A;border-radius:22px;padding:20px 24px;}
+button,a.btn{background:#1B3761;color:#F2F6FB;border:2px solid #35507A;border-radius:12px;font-size:15px;font-weight:700;padding:10px 18px;}
+button:hover,a.btn:hover{background:#1f4673;border-color:#34D3A6;}
+button.primary,a.btn.primary{background:#34D3A6;color:#06231B;border-color:#34D3A6;}
+button.on{background:#1f4673;color:#34D3A6;border-color:#34D3A6;}
+.steps span{border-color:#35507A;color:#B4C3D8;font-size:12px;} .steps span.cur{background:#FFC85C;border-color:#FFC85C;color:#2b1500;} .steps span.done{color:#34D3A6;border-color:#34D3A6;}
+.warn{color:#FFC85C;} .ok{color:#34D3A6;}
+.nav{border-top-color:#35507A;} .nav #b-next{background:#34D3A6;color:#06231B;border-color:#34D3A6;box-shadow:none;}
+.nav #b-back{color:#F2F6FB;border-color:#35507A;}
+input[type=text]{background:#0e2140;color:#F2F6FB;border:2px solid #35507A;border-radius:12px;}
+td,th{border-bottom-color:#35507A;} th{color:#B4C3D8;}
+details.adv{background:rgba(19,42,77,.55);border:1px solid #35507A;border-radius:22px;padding:14px 20px;margin:14px 0;}
+details.adv>summary{font-size:16px;font-weight:700;color:#F2F6FB;}
+details.adv .box{background:rgba(11,27,51,.6);}
+/* 快速檢查 */
+#quick .qs{display:flex;gap:36px;justify-content:center;flex-wrap:wrap;margin:16px 0 8px;}
+#quick .pad{width:150px;height:150px;border-radius:50%;border:3px solid #35507A;position:relative;background:#0e2140;}
+#quick .pad::before,#quick .pad::after{content:'';position:absolute;background:#24406a;}
+#quick .pad::before{left:50%;top:10%;bottom:10%;width:2px;} #quick .pad::after{top:50%;left:10%;right:10%;height:2px;}
+#quick .pad i{position:absolute;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:#34D3A6;box-shadow:0 0 12px #34D3A6;left:50%;top:50%;z-index:1;}
+#quick .pad b{position:absolute;left:0;right:0;bottom:-28px;text-align:center;font-size:13px;color:#B4C3D8;font-weight:500;}
+#quick .lamps{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:36px;}
+#quick .lamp{font-size:13px;padding:6px 12px;border-radius:999px;border:2px solid #35507A;color:#B4C3D8;}
+#quick .lamp.lit{background:#34D3A6;color:#06231B;border-color:#34D3A6;}
+#quick .hero{font-size:24px;font-weight:900;margin:4px 0;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-    <div><h1>🧙 搖桿對應精靈</h1>
-      <p class="sub">接上沒見過的搖桿或遙控器，跟著做 1 分鐘，方向就會對。做完立刻生效，之後接上同一支會自動套用。</p></div>
-    <a class="btn" href="../index.html">← 返回入口</a>
+    <div><h1>🎮 搖桿設定</h1>
+      <p class="sub">Xbox、PS、Switch 手把接上就能飛；遙控器或沒見過的搖桿，跟著做 1 分鐘設定就好。</p></div>
+    <a class="btn" href="../index.html">← 回首頁</a>
   </div>
 
-  <div class="box" id="wiz">
+  <div class="box" id="quick">
+    <div id="q-body"><p class="hero">接上手把或遙控器，然後按任一顆按鈕</p>
+      <p class="sub">沒有搖桿也沒關係：電腦用鍵盤、平板手機用畫面上的觸控搖桿，一樣能飛。</p>
+      <div class="row"><button id="q-wiz">我用的是遙控器／沒見過的搖桿 → 開始設定</button></div></div>
+  </div>
+
+  <div class="box" id="wiz" style="display:none">
     <div class="steps" id="steps"></div>
     <div id="stage" style="margin-top:12px"></div>
     <details id="raw-wrap"><summary>看搖桿原始讀值（除錯用）</summary><div id="raw"></div></details>
@@ -637,6 +675,57 @@ function loop(){ requestAnimationFrame(loop); const now=performance.now(), dt=Ma
 window.__wiz={get st(){return st;},reset};   // 測試用
 reset(); renderList(); loop();
 setTimeout(renderList,800);                 // 等資料夾設定檔讀完再刷新一次
+</script>
+<script type="module">
+/* ── v3 快速檢查（2026-11-17）──
+   認得的搖桿（Xbox／PS／Switch 標準手把、內建支援、這台電腦或老師已經設好的）→ 直接顯示「可以飛了」＋即時測試；
+   不順手可以按「重新設定」進 9 步精靈。認不得的 → 自動打開精靈。老師功能、已存設定收進「進階」。 */
+import { InputManager, gpCfgRead } from '../core/input.js';
+import { profileFor, profileSource } from '../core/controller-profiles.js';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// 進階區：按鍵對照圖、已存設定、老師功能收起來
+(()=>{ const boxes=[...document.querySelectorAll('.wrap > .box')].filter(b=>b.id!=='quick'&&b.id!=='wiz');
+  if(!boxes.length)return; const d=document.createElement('details'); d.className='adv';
+  d.innerHTML='<summary>⚙ 進階：按鍵對照圖、這台電腦已存的設定、老師功能</summary>';
+  boxes[0].before(d); boxes.forEach(b=>d.appendChild(b)); })();
+const showWiz=()=>{ $('wiz').style.display=''; $('wiz').scrollIntoView({behavior:'smooth',block:'start'}); };
+const pads=()=>{ try{ return [...(navigator.getGamepads?.()||[])].filter(Boolean); }catch{ return []; } };
+const known=gp=>['local','cloud','file'].includes(profileSource(gp))||!!gpCfgRead(gp)||gp.mapping==='standard';
+const niceName=gp=>{ const p=profileFor(gp); return (p&&p.name)||(gp.id.replace(/\s*\((?:STANDARD GAMEPAD|Vendor|XInput).*$/i,'').trim()||'搖桿').substring(0,40); };
+const LAMPS=[['confirm','確認'],['back','返回／暫停'],['gear','檔位'],['mode','模式'],['camCycle','視角'],['selfLevel','自穩']];
+let cur=null, input=null, last=performance.now();
+function paint(gp){
+  if(!gp){ cur=null; $('q-body').innerHTML=`<p class="hero">接上手把或遙控器，然後按任一顆按鈕</p>
+      <p class="sub">沒有搖桿也沒關係：電腦用鍵盤、平板手機用畫面上的觸控搖桿，一樣能飛。</p>
+      <div class="row"><button id="q-wiz">我用的是遙控器／沒見過的搖桿 → 開始設定</button></div>`; $('q-wiz').onclick=showWiz; return; }
+  cur=gp.id;
+  if(!known(gp)){ $('q-body').innerHTML=`<p class="hero">🆕 第一次見到這支：<span class="warn">${esc(niceName(gp))}</span></p>
+      <p>請跟著下面的設定做一次，大約 1 分鐘。做完之後，這台電腦接上同一支就會自動套用。</p>`; showWiz(); return; }
+  input=input||new InputManager();
+  $('q-body').innerHTML=`<p class="hero">✅ 認得你的 <span class="ok">${esc(niceName(gp))}</span>，可以直接飛了！</p>
+    <p class="sub">動一動兩支搖桿、按一按按鈕，確認綠點跟著你的手走、按鈕燈會亮（以美國手顯示：左手＝油門／轉向，右手＝前後／左右）。</p>
+    <div class="qs"><div class="pad" id="q-L"><i></i><b>左手<br>上下＝油門・左右＝轉向</b></div><div class="pad" id="q-R"><i></i><b>右手<br>上下＝前後・左右＝左右</b></div></div>
+    <div class="lamps">${LAMPS.map(([k,n])=>`<span class="lamp" id="ql-${k}">${n}</span>`).join('')}</div>
+    <div class="row" style="justify-content:center;margin-top:20px">
+      <a class="btn primary" href="../index.html">▶ 開始飛行</a>
+      <button id="q-redo">方向不對、按鍵不順手？重新設定</button></div>
+    <p class="sub" style="text-align:center">重新設定只存在這台電腦，隨時可以刪掉、回到原本的配置。</p>`;
+  $('q-redo').onclick=showWiz;
+}
+paint(null);
+function loop(){ requestAnimationFrame(loop);
+  const now=performance.now(), dt=Math.min(0.1,(now-last)/1000); last=now;
+  const gps=pads(); const active=(cur&&gps.find(g=>g.id===cur))||gps.find(g=>g.buttons.some(b=>b.pressed)||g.axes.some(v=>Math.abs(v)>0.5));
+  if(!active){ if(cur)paint(null); return; }
+  if(active.id!==cur)paint(active);
+  if(!input||!document.getElementById('q-L'))return;
+  input.update(dt); const cfg=gpCfgRead(active), ax=n=>input.gpAxis(active,n,cfg);
+  const put=(id,x,y)=>{ const i=$(id).firstElementChild; i.style.left=(50+x*40)+'%'; i.style.top=(50-y*40)+'%'; };
+  put('q-L',ax('yaw'),ax('throttle')); put('q-R',ax('roll'),ax('pitch'));
+  for(const [k] of LAMPS){ const el=$('ql-'+k); if(el)el.classList.toggle('lit',!!input.gpBtn(active,k,cfg)); }
+}
+loop();
 </script>
 </body>
 </html>

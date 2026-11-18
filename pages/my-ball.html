@@ -35,6 +35,10 @@
   .swl{font-size:11px;color:var(--sub);text-align:center;margin-top:3px;}
   .swc{display:flex;flex-direction:column;align-items:center;width:52px;}
   .saved{font-size:14px;color:var(--acc);min-height:20px;}
+  .vbtns{position:absolute;right:12px;top:12px;display:flex;gap:6px;z-index:2;}
+  .vbtns .chip{padding:6px 10px;font-size:13px;}
+  .chk{background:var(--card);border-radius:20px;padding:14px 20px;font-size:14px;line-height:1.7;}
+  .chk .ok{color:var(--acc);} .chk .bad{color:#ff7b7b;font-weight:700;} .chk .warn{color:#ffd166;}
 </style>
 </head>
 <body>
@@ -47,13 +51,16 @@
   <p>選好以後，每一關飛的都是這顆球，證書上也會畫它。設定存在這台裝置上。</p>
 </section>
 <div class="wrap">
-  <div class="view"><canvas id="c"></canvas><div class="cap" id="cap"></div></div>
+  <div class="view"><canvas id="c"></canvas><div class="cap" id="cap"></div>
+    <div class="vbtns" id="vbtns"></div></div>
   <div class="opts">
     <div class="grp"><h2>球框款式</h2><p class="n">常見款是比賽場上常看到的樣子；原創款是 NEWDRONE 自己設計的。</p><div class="chips" id="g-cage"></div></div>
-    <div class="grp"><h2>球框顏色</h2><p class="n">挑跟環燈顏色差比較多的，環燈才看得清楚。</p><div class="chips" id="g-color"></div></div>
+    <div class="grp" id="grp-top"><h2 id="top-h">燈籠頂部</h2><p class="n" id="top-n">有圓盤可以拿來頂人；沒圓盤從上面看得到頂部燈罩。FAI 版和韓國版的差別在開口大小：韓國版頂部和底部都加十字。</p><div class="chips" id="g-top"></div></div>
+    <div class="grp"><h2>球框顏色</h2><p class="n">挑跟環燈顏色差比較多的，環燈才看得清楚。球框跟環燈同色系是違規的（⚠ 會提醒）。</p><div class="chips" id="g-color"></div></div>
     <div class="grp"><h2>隊伍（環燈顏色）</h2><p class="n">比賽規定環燈一隊紅、一隊藍。</p><div class="chips" id="g-team"></div></div>
-    <div class="grp"><h2>環燈位置</h2><p class="n">外圈：燈在球框最大那一圈，最明顯。球內：燈藏在球裡面，從縫隙透出來。</p><div class="chips" id="g-ring"></div></div>
+    <div class="grp"><h2>環燈位置</h2><p class="n">外圈：燈在球框最大那一圈，最明顯。球內：燈藏在球裡面，從縫隙透出來。另外三種是真實足球機的裝法。</p><div class="chips" id="g-ring"></div></div>
     <div class="grp"><h2>尾燈顏色</h2><p class="n">尾燈在球的後方下面。每顆球要不一樣，不能用紅或藍。⚠ 的顏色做成真的 LED 容易被看成紅或藍。</p><div class="chips" id="g-tail"></div></div>
+    <div class="chk" id="chk"></div>
     <div class="saved" id="saved"></div>
   </div>
 </div>
@@ -61,8 +68,8 @@
 
 <script type="module">
 import * as THREE from 'three';
-import { buildSoccerCage, CAGE_STYLES, CAGE_COLORS, TAIL_COLORS, TEAM_COLORS,
-         ballPrefsGet, ballPrefsSet, ballBuildOpts, spinCageProps } from '../core/drone-soccer-cage.js';
+import { buildSoccerCage, CAGE_STYLES, CAGE_COLORS, TAIL_COLORS, TEAM_COLORS, RING_POS, LANTERN_TOPS, KR_OPTS, ballOpenAreas,
+         ballPrefsGet, ballPrefsSet, ballBuildOpts, ballClash, lanternAreas, spinCageProps } from '../core/drone-soccer-cage.js';
 import { applySiteTheme } from '../core/v3-site.js';
 applySiteTheme();
 
@@ -89,8 +96,14 @@ function rebuild(){
 function size(){ const w=cv.clientWidth,h=cv.clientHeight; r.setSize(w,h,false); cam.aspect=w/h; cam.updateProjectionMatrix(); }
 addEventListener('resize',size);
 let last=performance.now();
+/* 視角：斜前方（自動轉）／背面（看尾燈）／正上方（看頂部燈罩） */
+const VIEWS=[{k:'spin',n:'轉動',p:[2.0,1.15,2.5]},{k:'back',n:'背面',p:[0,0.35,3.1]},{k:'top',n:'正上方',p:[0,3.2,0.001]}];
+let view='spin';
+function setView(k){ view=k; const v=VIEWS.find(x=>x.k===k); cam.position.set(...v.p); cam.lookAt(0,0.05,0);
+  if(ball&&k!=='spin')ball.rotation.y=0; paintViews(); }
+function paintViews(){ $('vbtns').innerHTML=''; VIEWS.forEach(v=>chip($('vbtns'),v.n,'',view===v.k,()=>setView(v.k))); }
 r.setAnimationLoop(()=>{ const now=performance.now(), dt=Math.min(0.05,(now-last)/1000); last=now;
-  if(ball){ ball.rotation.y+=dt*0.5; spinCageProps(ball,dt,1); }
+  if(ball){ if(view==='spin')ball.rotation.y+=dt*0.5; spinCageProps(ball,dt,1); }
   r.render(scene,cam); });
 
 /* ── 選項 ── */
@@ -101,19 +114,35 @@ function swatch(el,color,name,on,warn,fn){ const w=document.createElement('div')
   if(warn){ x.innerHTML='<i>⚠</i>'; x.title=name+'（'+warn+'）'; } x.onclick=fn; w.appendChild(x);
   const l=document.createElement('div'); l.className='swl'; l.textContent=name; w.appendChild(l); el.appendChild(w); }
 function paint(){
-  for(const id of ['g-cage','g-color','g-team','g-ring','g-tail'])$(id).innerHTML='';
+  for(const id of ['g-cage','g-top','g-color','g-team','g-ring','g-tail'])$(id).innerHTML='';
   CAGE_STYLES.forEach(c=>chip($('g-cage'),c.name,c.kind,b.cage===c.code,()=>set({cage:c.code})));
-  CAGE_COLORS.forEach((c,i)=>swatch($('g-color'),c.hex,c.name,b.color===i,null,()=>set({color:i})));
+  const lan=b.cage==='lantern', TOPS=lan?LANTERN_TOPS:KR_OPTS;
+  if(!lan&&!KR_OPTS.some(t=>t.code===b.top)) b.top='disc';   // 燈籠的 FAI 版換到別款＝一般版
+  $('top-h').textContent=lan?'燈籠頂部':'規則版本';
+  $('top-n').textContent=lan?'有圓盤可以拿來頂人；沒圓盤從上面看得到頂部燈罩。韓國版頂部和底部都加十字。'
+    :'韓國比賽每個開口要小於 70 cm²：韓國版會在底部（足球紋路、蜂巢、軌道環連頂部）加十字。';
+  TOPS.forEach(t=>chip($('g-top'),t.name,t.sub,(b.top||'disc')===t.code,()=>set({top:t.code})));
+  CAGE_COLORS.forEach((c,i)=>swatch($('g-color'),c.hex,c.name,b.color===i,c.clash===b.team?'跟環燈同色系，違規':null,()=>set({color:i})));
   chip($('g-team'),'🔵 藍隊','',b.team==='blue',()=>set({team:'blue'}));
   chip($('g-team'),'🔴 紅隊','',b.team==='red',()=>set({team:'red'}));
-  chip($('g-ring'),'外圈','最明顯',b.ring==='outer',()=>set({ring:'outer'}));
-  chip($('g-ring'),'球內','從縫隙透光',b.ring==='inner',()=>set({ring:'inner'}));
+  RING_POS.forEach(x=>chip($('g-ring'),x.name,x.sub,b.ring===x.code,()=>set({ring:x.code})));
   TAIL_COLORS.forEach((c,i)=>swatch($('g-tail'),c.hex,c.name,b.tail===i,c.warn,()=>set({tail:i})));
   const cs=CAGE_STYLES.find(c=>c.code===b.cage);
-  $('cap').textContent=`${cs.name}・${CAGE_COLORS[b.color].name}・${b.team==='red'?'紅隊':'藍隊'}・環燈${b.ring==='outer'?'外圈':'球內'}・尾燈${TAIL_COLORS[b.tail].name}`;
+  const rp=RING_POS.find(x=>x.code===b.ring), tp=LANTERN_TOPS.find(t=>t.code===(b.top||'disc'));
+  $('cap').textContent=`${cs.name}${b.cage==='lantern'?'（'+tp.name+'）':''}・${CAGE_COLORS[b.color].name}・${b.team==='red'?'紅隊':'藍隊'}・環燈${rp.name}・尾燈${TAIL_COLORS[b.tail].name}`;
+  // 規則檢查（只提醒、不擋）
+  const L=[]; const clash=ballClash(b);
+  L.push(clash?`<div class="bad">✖ ${clash}</div>`:'<div class="ok">✔ 環燈跟球框顏色分得清楚</div>');
+  const tw=TAIL_COLORS[b.tail].warn;
+  L.push(tw?`<div class="warn">⚠ 尾燈「${TAIL_COLORS[b.tail].name}」${tw}，做成真的 LED 容易被看錯，比賽建議換一色</div>`:'<div class="ok">✔ 尾燈顏色 OK（不是紅、藍）</div>');
+  { const O=ballOpenAreas(b), parts=O.parts, mx=Math.max(...parts.map(x=>x[1])), big=parts.filter(x=>x[1]>=70).map(x=>x[0]+' '+x[1]+' cm²');
+    L.push(`<div>開口（實物 20 cm 換算）：${parts.map(x=>x[0]+' '+x[1]+' cm²').join('、')}${O.topClosed?'；頂部封住':''}${O.complete?'':'<br><span class="warn">這款側面、頂部的開口還沒計算，下面只檢查底部。</span>'}</div>`);
+    L.push(`<div class="${mx<=150?'ok':'bad'}">${mx<=150?'✔':'✖'} FAI 規則（每個開口 ≤150 cm²）</div>`);
+    L.push(`<div class="${mx<70?'ok':'warn'}">${mx<70?'✔':'⚠'} 韓國規則（每個開口 <70 cm²）${mx<70?'':'：太大的是 '+big.join('、')+'——要比韓國賽請選「韓國版」'}</div>`); }
+  $('chk').innerHTML='<b>驗收（規則檢查）</b>'+L.join('');
 }
 function set(p){ b={...b,...p}; ballPrefsSet(b); rebuild(); paint(); $('saved').textContent='✔ 已儲存，下一關開始就會用這顆球。'; }
-size(); rebuild(); paint();
+size(); rebuild(); paint(); paintViews();
 </script>
 <script type="module" src="../core/gp-nav-boot.js"></script>
 </body>
