@@ -315,12 +315,16 @@ export function resolveCollisions(drones){
       // 進球回程（不可擋）或同隊互碰：只輕輕推開，不失控、不轉
       const returning=((a.mustReturn||b.mustReturn)&&a.team!==b.team)||a.team===b.team;
       if(vn<0){
-        const e=returning?0.2:0.95, jimp=-(1+e)*vn/2;          // 等質量：各分一半（2026-11-19：0.85 → 0.95）
-        // 球框有彈性：再多給兩邊一個往外彈的力（接近速度 × 0.45；2026-11-19 由 0.3 加大），撞上去的一方也會被彈回來，不會只是停住
-        const push=returning?0:closing*0.45;
+        /* 2026-11-19 晚（老師：「兩機互頂不會撞飛，只有直線加速撞過去才會飛」）：彈性改成看接近速度——
+           慢慢頂（< 0.8 m/s）＝完全不彈、兩台黏在一起比推力，推力大的慢慢把對方推走；
+           0.8～2.5 m/s 逐漸變彈；≥ 2.5 m/s（直線加速衝撞）才是全彈 0.95＋外推，撞飛。 */
+        const hard=returning?0:Math.min(1,Math.max(0,(closing-0.8)/1.7));
+        const e=returning?0.2:0.95*hard, jimp=-(1+e)*vn/2;      // 等質量：各分一半
+        // 球框有彈性：衝撞時再多給兩邊一個往外彈的力（接近速度 × 0.45 × 衝撞程度²），慢慢頂不會有
+        const push=closing*0.45*hard*hard;
         if(onset){ bump(a,closing,'drone'); bump(b,closing,'drone'); }
         a.vel.addScaledVector(n,jimp+push); b.vel.addScaledVector(n,-jimp-push);
-        if(!returning&&onset&&closing>0.4){
+        if(!returning&&onset&&closing>1.2){   // 慢慢頂不會失控（原本 0.4 m/s 就失控）
           const kt=Math.min(0.7,closing*0.12);
           for(const d of [a,b]) d.knockT=Math.max(d.knockT||0,kt);
           if(closing>2.5){ const p=Math.min(0.6,(closing-2.5)/4); _maybeAnomaly(a,0.3,0.7,p); _maybeAnomaly(b,0.3,0.7,p); }
@@ -328,7 +332,7 @@ export function resolveCollisions(drones){
       }
       if(onset&&!returning){   // 擦撞：兩台同方向自轉（都順時針或都逆時針）
         const tx=_relVel.x-n.x*vn, tz=_relVel.z-n.z*vn;
-        if(Math.hypot(tx,tz)>0.6){
+        if(Math.hypot(tx,tz)>0.6&&closing>0.8){   // 2026-11-19：慢慢頂、貼著滑不轉
           const kick=Math.max(-2.2,Math.min(2.2,(n.z*tx-n.x*tz)*1.2));
           for(const d of [a,b]) d.spinV=Math.max(-9,Math.min(9,(d.spinV||0)+kick));
         }
