@@ -101,7 +101,7 @@ function unb64url(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)
 /* 查驗碼：FNV-1a → 8 碼（去掉易混的 0/O/1/I） */
 const A32='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function checkCode(d){
-  const s='newdrone-v3|'+JSON.stringify([d.n,d.d,d.s,d.b]); let h=0x811c9dc5, h2=0x01000193;
+  const s='newdrone-v3|'+JSON.stringify([d.n,d.d,d.s,d.b].concat(d.t?[d.t,d.ta]:[])); let h=0x811c9dc5, h2=0x01000193;   // 有老師核准（d.t）才多編進去，舊連結的查驗碼不變
   for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; h2=Math.imul(h2^s.charCodeAt(i),0x5bd1e995)>>>0; }
   let out=''; for(let i=0;i<8;i++){ const v=i<4?(h>>>(i*7)):(h2>>>((i-4)*7)); out+=A32[v&31]; }
   return out.slice(0,4)+'-'+out.slice(4);
@@ -222,6 +222,7 @@ function draw(d,{photo,ball,qr,code}){
     x.beginPath(); x.moveTo(396,y); x.lineTo(1067,y); x.stroke();
   }
   // 頁尾：發證單位＋章樣
+  if(d.t){ x.fillStyle='#0F6B53'; x.font='700 16px '+FONT; x.fillText('指導老師　'+d.t+'（'+(d.ta||'')+' 核准）',396,672); }   // 新版班級：老師在後台核准（2026-11-19）
   x.fillStyle='#0B1B33'; x.font='700 16px '+FONT; x.fillText(ISSUER,396,700);
   x.fillStyle='#2A3D5A'; x.font='400 15px '+FONT; x.fillText('發證日期　'+d.d,396,726);
   x.fillStyle='#8A97AA'; x.font='400 11px '+FONT;
@@ -346,6 +347,17 @@ async function main(){
   $('bar').style.display='flex';
   ball=await ballImage(ballFromData(data));
   render();
+  if(!phone)cloudSign();
+}
+/* 新版班級（老師後台開的班）登入中：問雲端老師核准了沒，核准就在證書加「指導老師」（2026-11-19） */
+async function cloudSign(){
+  try{
+    const api=await import('../core/cloud-api.js'); await api.cloudInit(); if(!api.classIsV3())return;
+    const cs=await import('../data/cloud-sync.js'); if(!cs.auth())return;
+    const r=await cs.cert(); if(!r||!r.ok)return;
+    if(r.approved&&r.teacher){ data.t=r.teacher; data.ta=r.approvedAt||''; render(); }
+    else{ const n=$('note'); if(n)n.innerHTML+='<br>☁ 老師在後台核准後，證書會多一行「指導老師」簽名（重新整理這一頁就會出現）。'; }
+  }catch(e){ console.warn('[cert] 雲端核准查不到',e); }
 }
 main();
 </script>

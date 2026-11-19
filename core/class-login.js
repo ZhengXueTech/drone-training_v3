@@ -9,7 +9,8 @@
    只有新版班級（nd.class.v3）才出現；舊方式的老師、沒連雲端的完全不受影響。
    ============================================================ */
 import { cloudInit, classInfo, classIsV3 } from './cloud-api.js';
-import { login, logout, auth, status, onCloudStatus, flush } from '../data/cloud-sync.js';
+import { login, logout, auth, status, onCloudStatus, flush, examStart, examState, examEnd } from '../data/cloud-sync.js';
+import { LEVELS } from '../data/levels-manifest.js';
 
 const ROOM='nd3.room', LAST='nd3.lastRoom';
 const $=id=>document.getElementById(id);
@@ -42,13 +43,19 @@ function chip(){
   if(!el){ el=document.createElement('div'); el.id='cl-chip'; document.body.appendChild(el);
     el.addEventListener('click',ev=>{ const b=ev.target.closest('button'); if(!b)return;
       if(b.dataset.a==='in')openLogin();
-      else if(b.dataset.a==='out'){ logout(); paint(); openLogin(); } }); }
+      else if(b.dataset.a==='out'){ examEnd(); logout(); paint(); openLogin(); }
+      else if(b.dataset.a==='exam')openExam();
+      else if(b.dataset.a==='go'){ const ex=examState(); if(ex&&ex.file)location.href=ex.file; }
+      else if(b.dataset.a==='endx'){ examEnd(); paint(); } }); }
   return el;
 }
 function paint(){
   const a=auth(), st=status(), el=chip();
   if(a){ const nm=a.name&&!/班 \d+ 號$/.test(a.name)?'（'+esc(a.name)+'）':'';
-    el.innerHTML='☁ '+esc(a.classId)+(booth()?' ':' 班 ')+esc(a.seat)+' 號'+nm+(st.pending?' <span class="warn">待上傳 '+st.pending+'</span>':'')+(st.error?' <span class="warn" title="'+esc(st.error)+'">⚠</span>':'')+' <button data-a="out">換人</button>'; }
+    const ex=examState();
+    el.innerHTML='☁ '+esc(a.classId)+(booth()?' ':' 班 ')+esc(a.seat)+' 號'+nm+(st.pending?' <span class="warn">待上傳 '+st.pending+'</span>':'')+(st.error?' <span class="warn" title="'+esc(st.error)+'">⚠</span>':'')
+      +(ex?' <span class="warn">📝 考核 '+esc(ex.code)+'（剩 '+Math.max(0,ex.limit-ex.used)+' 次）</span> <button data-a="go">進考場</button> <button data-a="endx">結束考核</button>':(booth()?'':' <button data-a="exam">📝 考場代碼</button>'))
+      +' <button data-a="out">換人</button>'; }
   else el.innerHTML='☁ 還沒登入，成績不會上傳 <button data-a="in">登入班級</button>';
 }
 export function openLogin(){
@@ -81,6 +88,25 @@ export function openLogin(){
     try{ localStorage.setItem(LAST,cls); }catch{}
     msg('登入成功！'+(r.restored?'從雲端拉回 '+r.restored+' 關紀錄。':''),'ok');
     setTimeout(()=>{ m.remove(); paint(); if(r.restored)location.reload(); },900);
+  };
+}
+/* 考場代碼（老師寫在黑板上的 4 碼）→ 問雲端是哪一關、還剩幾次 → 直接進那一關（2026-11-19） */
+function openExam(){
+  let m=$('cl-mask'); if(m)m.remove();
+  m=document.createElement('div'); m.id='cl-mask';
+  m.innerHTML=`<form id="cl-box" autocomplete="off"><h3>📝 考場代碼</h3><div class="who">輸入老師寫在黑板上的代碼（4 個英數字）</div>
+    <input id="cl-ex" class="pin" maxlength="8" placeholder="例：K7QM" style="text-transform:uppercase">
+    <div id="cl-msg"></div><div class="acts"><button type="button" id="cl-skip">取消</button><button type="submit" class="go" id="cl-go">進考場</button></div></form>`;
+  document.body.appendChild(m); $('cl-ex').focus();
+  const msg=(t,c)=>{ const e=$('cl-msg'); e.textContent=t; e.className=c||''; };
+  $('cl-skip').onclick=()=>m.remove();
+  $('cl-box').onsubmit=async ev=>{ ev.preventDefault();
+    const c=$('cl-ex').value.trim().toUpperCase(); if(!c){ msg('請輸入代碼','err'); return; }
+    $('cl-go').disabled=true; msg('查詢中…');
+    const r=await examStart(c,LEVELS); $('cl-go').disabled=false;
+    if(!r.ok){ msg(r.error||'找不到這個考場','err'); return; }
+    msg('考核：'+r.exam.title+'，可以考 '+(r.exam.limit-r.exam.used)+' 次（'+r.exam.rule+'）。準備好就進去！','ok');
+    setTimeout(()=>{ location.href=r.exam.file; },1400);
   };
 }
 /* 首頁呼叫：新版班級才掛上小牌子；open＝剛從 QR 碼進來，直接跳登入框（已登入就不跳） */
