@@ -19,14 +19,14 @@
 (function(){ try{
   var q=new URLSearchParams(location.search), g=q.get('gas'), c=q.get('cls'), rm=q.get('room');
   if(!g&&!c) return;
-  if(rm&&rm.length<=10){ sessionStorage.setItem('nd3.room',rm); sessionStorage.setItem('nd3.wantLogin','1'); }   // 新版班級的 QR 碼：哪一班（2026-11-19）
+  if(rm&&rm.length<=10){ sessionStorage.setItem('nd3.room',rm); sessionStorage.setItem('nd3.wantLogin','1'); if(q.get('bt')==='1')sessionStorage.setItem('nd3.booth','1'); else sessionStorage.removeItem('nd3.booth'); }   // 新版班級的 QR 碼：哪一班（2026-11-19）
   if(g&&/^https:\/\/script\.google\.com\/(a\/macros\/[^\/]+|macros)\/s\/[\w-]+\/(exec|dev)$/.test(g)){
     var old=''; try{ old=JSON.parse(localStorage.getItem('nd.settings.gasUrl'))||''; }catch(e){}
     if(old!==g){ localStorage.setItem('nd.settings.gasUrl',JSON.stringify(g)); localStorage.removeItem('nd.cache.cloudProfiles'); }
     sessionStorage.setItem('nd3.entry','1');
   }
   if(c&&/^[\w-]{1,20}$/.test(c)) sessionStorage.setItem('nd3.entryClass',c);
-  q.delete('gas'); q.delete('cls'); q.delete('room'); var r=q.toString();
+  q.delete('gas'); q.delete('cls'); q.delete('room'); q.delete('bt'); var r=q.toString();
   history.replaceState(null,'',location.pathname+(r?'?'+r:'')+location.hash);
 }catch(e){} })();
 </script>
@@ -105,6 +105,7 @@
       <div class="row adv"><span>進階訓練 6 關</span><div class="tiles" id="t-adv" style="grid-template-columns:repeat(6,minmax(0,1fr))"></div></div>
     </div>
     <div class="detail" id="detail">把滑鼠移到格子上可以看每一關在練什麼；點格子直接開始。</div>
+    <div style="display:flex;justify-content:flex-end"><button id="b-reset" type="button" style="font:inherit;font-size:14px;color:var(--sub);background:transparent;border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer" title="擺攤、多人輪流用同一台時：清掉這台的關卡紀錄、球機、證書，下一位從頭開始">🔄 換下一位玩家（清除這台的紀錄）</button></div>
   </div>
 </section>
 
@@ -171,6 +172,19 @@ themeLabel();
 
 /* 動態背景：載入失敗（舊電腦沒有 WebGL）就算了，首頁照常可用 */
 import('./core/home-bg.js').then(m=>m.startHomeBg(document.getElementById('bg'))).catch(()=>{});
+
+/* 擺攤／多人輪流（2026-11-19）：清掉這台裝置上「玩家自己的」紀錄，留下設定（主題、搖桿、雲端網址、班級）。
+   還沒上傳完的班級成績不清，避免學生的成績不見。 */
+$('b-reset').addEventListener('click',()=>{
+  let pending=0; try{ pending=(JSON.parse(localStorage.getItem('nd.cloud.queue')||'[]')||[]).length; }catch{}
+  if(!confirm('清除這台裝置的關卡紀錄、徽章、我的球機和證書資料，讓下一位從頭開始？'+(pending?'\n（還有 '+pending+' 筆班級成績沒上傳完，會保留繼續上傳）':'')))return;
+  const PRE=['nd.progress.','nd.stash.','nd.leaderboard.','nd.race.ghost.','nd.tut.','nd.scen.','nd.hand.','nd.diff.'];
+  const ONE=['nd.badges','nd.student','nd.owner','nd.race.missions','nd.garage.build','nd.egg','nd3.ball','nd3.certName','nd.local.queue'];
+  const del=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&(ONE.includes(k)||PRE.some(p=>k.startsWith(p))))del.push(k); }
+  del.forEach(k=>localStorage.removeItem(k));
+  ['nd.cloud.auth3','nd.exam'].forEach(k=>{ try{ sessionStorage.removeItem(k); }catch{} });
+  location.reload();
+});
 
 /* 從老師的 GAS 入口或班級 QR 碼進來：連班級＋提示；新版班級再跳登入框（失敗也不影響首頁） */
 const mountLogin=open=>import('./core/class-login.js').then(m=>m.mountClassLogin({open})).catch(()=>{});

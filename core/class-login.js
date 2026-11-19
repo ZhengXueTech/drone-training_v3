@@ -16,6 +16,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function room(){ try{ return sessionStorage.getItem(ROOM)||localStorage.getItem(LAST)||''; }catch{ return ''; } }
 function roomFixed(){ try{ return !!sessionStorage.getItem(ROOM); }catch{ return false; } }
+function booth(){ try{ return sessionStorage.getItem('nd3.booth')==='1'; }catch{ return false; } }   // 攤位班：座號改叫號碼
 
 const CSS=`
 #cl-chip{position:fixed;right:16px;bottom:16px;z-index:40;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;
@@ -47,18 +48,18 @@ function chip(){
 function paint(){
   const a=auth(), st=status(), el=chip();
   if(a){ const nm=a.name&&!/班 \d+ 號$/.test(a.name)?'（'+esc(a.name)+'）':'';
-    el.innerHTML='☁ '+esc(a.classId)+' 班 '+esc(a.seat)+' 號'+nm+(st.pending?' <span class="warn">待上傳 '+st.pending+'</span>':'')+(st.error?' <span class="warn" title="'+esc(st.error)+'">⚠</span>':'')+' <button data-a="out">換人</button>'; }
+    el.innerHTML='☁ '+esc(a.classId)+(booth()?' ':' 班 ')+esc(a.seat)+' 號'+nm+(st.pending?' <span class="warn">待上傳 '+st.pending+'</span>':'')+(st.error?' <span class="warn" title="'+esc(st.error)+'">⚠</span>':'')+' <button data-a="out">換人</button>'; }
   else el.innerHTML='☁ 還沒登入，成績不會上傳 <button data-a="in">登入班級</button>';
 }
 export function openLogin(){
-  const info=classInfo()||{}, r=room(), fixed=roomFixed()&&r;
+  const info=classInfo()||{}, r=room(), fixed=roomFixed()&&r, B=booth();
   let m=$('cl-mask'); if(m)m.remove();
   m=document.createElement('div'); m.id='cl-mask';
   m.innerHTML=`<form id="cl-box" autocomplete="off"><h3>登入班級</h3>
     <div class="who">${esc(info.school||'')} ${esc(info.teacher||'')} 老師的班級</div>
-    <div class="row2"><div><label>班級</label><input id="cl-cls" value="${esc(r)}" ${fixed?'readonly':''} maxlength="10" placeholder="例：801"></div>
-    <div><label>座號</label><input id="cl-seat" type="number" inputmode="numeric" min="1" max="60" placeholder="例：5"></div></div>
-    <label>登入碼（老師發的小紙條，4 個數字）</label><input id="cl-pin" class="pin" inputmode="numeric" maxlength="4" placeholder="• • • •">
+    <div class="row2"><div><label>${B?'攤位':'班級'}</label><input id="cl-cls" value="${esc(r)}" ${fixed?'readonly':''} maxlength="10" placeholder="例：801"></div>
+    <div><label>${B?'號碼（號碼牌上的）':'座號'}</label><input id="cl-seat" type="number" inputmode="numeric" min="1" max="${B?300:60}" placeholder="例：5"></div></div>
+    <label>登入碼（${B?'號碼牌':'老師發的小紙條'}上的 4 個數字）</label><input id="cl-pin" class="pin" inputmode="numeric" maxlength="4" placeholder="• • • •">
     <label>暱稱（選填）</label><input id="cl-nick" maxlength="10" placeholder="排行榜可以顯示，不要用真名">
     <div id="cl-msg"></div>
     <div class="acts"><button type="button" id="cl-skip">先不登入</button><button type="submit" class="go" id="cl-go">登入</button></div>
@@ -71,7 +72,7 @@ export function openLogin(){
   $('cl-box').onsubmit=async ev=>{
     ev.preventDefault();
     const cls=$('cl-cls').value.trim(), seat=$('cl-seat').value.trim(), pin=$('cl-pin').value.trim(), nick=$('cl-nick').value.trim();
-    if(!cls||!seat){ msg('班級、座號都要填','err'); return; }
+    if(!cls||!seat){ msg(B?'號碼要填':'班級、座號都要填','err'); return; }
     if(!/^\d{4}$/.test(pin)){ msg('登入碼是 4 個數字','err'); return; }
     $('cl-go').disabled=true; msg('登入中…（雲端第一次會比較慢，最多等 20 秒）');
     const r=await login({school:info.school||'',classId:cls,seat,name:nick,pw:pin},{onWait:i=>msg('雲端忙線中，自動重試第 '+i+' 次…')});
