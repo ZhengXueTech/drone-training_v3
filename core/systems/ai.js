@@ -20,9 +20,11 @@ import { FIELD, SOCCER_PHYS, TA, TB } from './soccer.js';
 // align：striker 判斷「是否對準可以衝刺」的容許誤差倍率（越大＝越隨便就衝、越果斷）
 export const AI_DIFF={
   // v3（2026-11-17）：速度換成真實 m/s 後，舊的 0.6～1.5 倍差距太大（困難一場被進近百球），收斂成下面這組
-  easy:{spd:0.7,  gk:4.0, block:7.0,  react:1.6, align:0.8, look:0.5 },
-  med: {spd:0.8,  gk:6.0, block:9.0,  react:1.3, align:0.85,look:0.3 },
-  hard:{spd:0.9,  gk:9.0, block:12.0, react:1.05,align:0.95,look:0.15},
+  // dbl（2026-11-19 老師選「依難度不同」）：false＝一守門一攔截（守門員貼在球門前不撲出、支援不進球門前 1 m）；
+  //   true＝困難才會門前兩台夾擊（守門員可撲出 0.9 m、支援跟到球門口）
+  easy:{spd:0.7,  gk:4.0, block:7.0,  react:1.6, align:0.8, look:0.5 ,dbl:false},
+  med: {spd:0.8,  gk:6.0, block:9.0,  react:1.3, align:0.85,look:0.3 ,dbl:false},
+  hard:{spd:0.9,  gk:9.0, block:12.0, react:1.05,align:0.95,look:0.15,dbl:true},
 }
 
 const _tgt=new THREE.Vector3();
@@ -173,7 +175,8 @@ export function updateSoccerAI(d,dt,ctx){
         if(player.mustReturn){ giveWay(d,player,.5,dt,SF); break; }
         if(player.pos.z>0){
           pred(player,0.35);
-          _tgt.set(_p.x*.8,clamp(_p.y,F.BR+.1,F.FH-F.BR-.1),clamp(_p.z+.35,0,F.GZ-.3));
+          // 簡單／中等：支援只在球門前 1 m 以外攔截，你衝進去它就停在外圍（守門交給守門員，不兩台夾）
+          _tgt.set(_p.x*.8,clamp(_p.y,F.BR+.1,F.FH-F.BR-.1),clamp(_p.z+.35,0,D.dbl?F.GZ-.3:F.GZ-1.0));
         }
         else _tgt.set(d.i%2===0?-.4:.4,1.3,.5);
       }else{
@@ -205,7 +208,7 @@ export function updateSoccerAI(d,dt,ctx){
         if(distP<(D.look>0.4?0.55:D.look>0.2?0.45:0.35)&&approaching){   // v3：越難越不會衝出去亂撲，守住射門線
           _tgt.set(clamp(_p.x,-F.HW+F.BR*2,F.HW-F.BR*2),
                    clamp(_p.y,F.BR+.1,F.FH-F.BR-.1),
-                   clamp(_p.z,F.GZ-.9,F.GZ-.1));
+                   clamp(_p.z,D.dbl?F.GZ-.9:F.GZ-.55,F.GZ-.1));   // 簡單／中等：最多離開球門 0.55 m，不撲出來
           moveTo(d,_tgt,dt,D.block*SF);
         }else if(approaching){
           // 站在「玩家 → 球門中心」連線上、球門前 0.5 m（封住射門角度）
