@@ -209,7 +209,8 @@ function addGoalGlow(){
   if(!GOALS)return;
   for(const g of GOALS){ if(g._glow){ g.mesh.remove(g._glow); g._glow=null; }
     if(gfxLevel()==='high'){ const col=g.mesh.material.color.getHex();
-      const halo=new THREE.Mesh(new THREE.TorusGeometry(F.GR,F.GT*2.6,12,48),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.25,blending:THREE.AdditiveBlending,depthWrite:false}));
+      // 2026-11-19：原本光暈是包住整個環的粗圓管（管徑 GT×2.6），往內蓋進球門洞，洞看起來只剩 16 cm 左右 → 改成只在外圈發光，內徑保持 40 cm
+      const halo=new THREE.Mesh(new THREE.RingGeometry(F.GO-0.01,F.GO+0.12,48,1),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.28,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
       g.mesh.add(halo); g._glow=halo; } }
 }
 /* 當場重建（畫質切換）：清空 deco 群組再建一次；球門環不動 */

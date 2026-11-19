@@ -331,7 +331,10 @@ function v3Ball(code,opts){
     if(!isPlayer){ do{ tail=(_tailSeq++)%TAIL_COLORS.length; }while(tail===me.tail); }
     o={...(isPlayer?ballBuildOpts(me):{cage:'globe',ring:'outer',cageColor:0xdfe5ee}),
        team:red?'red':'blue', striker:(opts.sc!=null&&opts.sc!==tc), tail:TAIL_COLORS[tail].hex,
-       scale:(FIELD_BR/0.5)*(scale||1)};
+       // 2026-11-19 老師回饋「球門比球機太小」：足球場上的球機一律照真實比例（直徑 22 cm），
+       // 不套「機體視覺大小」偏好（v2 首頁可以設 1.3～3 倍，v3 跟 v2 同網域會讀到同一格 → 球機在場上被放大好幾倍）；
+       // 0.556＝球框模型最外緣（燈環外徑 0.516＋管徑 0.04），用它對齊 FIELD_BR，看起來的大小＝碰撞大小。
+       scale:FIELD_BR/0.556};
   }else{
     o={...ballBuildOpts(me),scale:scale||1};
     // 隊伍以「我的球機」設定為準（訓練場的紅隊／藍隊出發會直接改這個設定）
