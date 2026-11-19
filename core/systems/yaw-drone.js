@@ -19,6 +19,7 @@
    ============================================================ */
 import * as THREE from 'three';
 import { rollGroundEffect, dampInput, triggerAnomaly as _triggerAnomaly } from './anomaly.js';
+import { bump } from '../feedback.js';
 
 /* 預設物理參數（沿 soccer.js SOCCER_PHYS 原值）；關卡可整包覆寫某幾項，
    例如 exp-goalkeeper 用 PITCHMAX:18、DRAG_PER_SEC:Math.pow(0.92,60)、
@@ -62,6 +63,7 @@ export class YawDrone{
      this.gearMul ：二檔水平推力倍率（1.5） */
   step(dt,ctl,SF=1){
     const P=this.phys;
+    this._ctl=ctl;   // 2026-11-19 撞擊回饋（core/feedback.js）
     rollGroundEffect(this,this.pos.y-this.bounds.minY,this.vel.y);
     const inp=dampInput(this,ctl,dt);
     const GM=this.gearMul||1;
@@ -80,12 +82,12 @@ export class YawDrone{
     this.vel.z+=(ax*-sy+az*cy)*dt;
     this.vel.multiplyScalar(Math.pow(P.DRAG_PER_SEC,dt));
     this.pos.addScaledVector(this.vel,dt);
-    if(this.pos.y<B.minY+B.BR){this.pos.y=B.minY+B.BR;this.vel.y=Math.abs(this.vel.y)*P.FBOUNCE;}
-    if(this.pos.y>B.maxY-B.BR){this.pos.y=B.maxY-B.BR;this.vel.y=-Math.abs(this.vel.y)*P.WBOUNCE;}
-    if(this.pos.x<B.minX+B.BR){this.pos.x=B.minX+B.BR;this.vel.x=Math.abs(this.vel.x)*P.WBOUNCE;}
-    if(this.pos.x>B.maxX-B.BR){this.pos.x=B.maxX-B.BR;this.vel.x=-Math.abs(this.vel.x)*P.WBOUNCE;}
-    if(this.pos.z<B.minZ+B.BR){this.pos.z=B.minZ+B.BR;this.vel.z=Math.abs(this.vel.z)*P.WBOUNCE;}
-    if(this.pos.z>B.maxZ-B.BR){this.pos.z=B.maxZ-B.BR;this.vel.z=-Math.abs(this.vel.z)*P.WBOUNCE;}
+    if(this.pos.y<B.minY+B.BR){this.pos.y=B.minY+B.BR;bump(this,-this.vel.y,'floor');this.vel.y=Math.abs(this.vel.y)*P.FBOUNCE;}
+    if(this.pos.y>B.maxY-B.BR){this.pos.y=B.maxY-B.BR;bump(this,this.vel.y);this.vel.y=-Math.abs(this.vel.y)*P.WBOUNCE;}
+    if(this.pos.x<B.minX+B.BR){this.pos.x=B.minX+B.BR;bump(this,-this.vel.x);this.vel.x=Math.abs(this.vel.x)*P.WBOUNCE;}
+    if(this.pos.x>B.maxX-B.BR){this.pos.x=B.maxX-B.BR;bump(this,this.vel.x);this.vel.x=-Math.abs(this.vel.x)*P.WBOUNCE;}
+    if(this.pos.z<B.minZ+B.BR){this.pos.z=B.minZ+B.BR;bump(this,-this.vel.z);this.vel.z=Math.abs(this.vel.z)*P.WBOUNCE;}
+    if(this.pos.z>B.maxZ-B.BR){this.pos.z=B.maxZ-B.BR;bump(this,this.vel.z);this.vel.z=-Math.abs(this.vel.z)*P.WBOUNCE;}
   }
   speed(){return this.vel.length();}
 }
@@ -120,7 +122,7 @@ export function resolveSphereCollisions(list,BR){
     if(d2<md*md&&d2>1e-4){
       const dist=Math.sqrt(d2), n=diff.divideScalar(dist);
       const imp=a.vel.clone().sub(b.vel).dot(n)*.65;
-      if(imp<0){a.vel.addScaledVector(n,-imp*.5); b.vel.addScaledVector(n,imp*.5);}
+      if(imp<0){ bump(a,-imp/.65,'drone'); bump(b,-imp/.65,'drone');a.vel.addScaledVector(n,-imp*.5); b.vel.addScaledVector(n,imp*.5);}
       const ov=(md-dist)*.52;
       a.pos.addScaledVector(n,ov); b.pos.addScaledVector(n,-ov);
     }

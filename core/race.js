@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { Engine } from './engine.js';
 import { InputManager } from './input.js';
 import { Drone } from './physics.js';
+import { bump } from './feedback.js';
 import { CameraRig, CAM_LABELS } from './camera.js';
 import { HUD } from './hud.js';
 import { UI } from './ui.js';
@@ -292,7 +293,7 @@ function collide(){
     const dx=drone.pos.x-o.x, dz=drone.pos.z-o.z, d=Math.hypot(dx,dz), R=o.r+0.3;
     if(d<R&&d>1e-4){ const k=(R-d)/d; drone.pos.x+=dx*k; drone.pos.z+=dz*k;
       const nx=dx/d, nz=dz/d, vn=drone.vel.x*nx+drone.vel.z*nz;
-      if(vn<0){ drone.vel.x-=1.35*vn*nx; drone.vel.z-=1.35*vn*nz; }
+      if(vn<0){ bump(drone,-vn); drone.vel.x-=1.35*vn*nx; drone.vel.z-=1.35*vn*nz; }
       drone.vel.x*=0.6; drone.vel.z*=0.6; hit=true; }
   }
   /* 2026-10-10 第二階段：方塊障礙（大樓、牆、橫梁、看台：{x,z,w,d,h,y0}，w/d＝寬深全長）。從最淺的那一面推出去 */
@@ -300,10 +301,10 @@ function collide(){
     const y0=b.y0||0, hw=b.w/2+0.3, hd=b.d/2+0.3, dx=drone.pos.x-b.x, dz=drone.pos.z-b.z, y=drone.pos.y;
     if(Math.abs(dx)>=hw||Math.abs(dz)>=hd||y>=b.h+0.15||y<=y0-0.15)continue;
     const pen=[hw-Math.abs(dx),hd-Math.abs(dz),b.h+0.15-y,y0>0?y-(y0-0.15):1e9], m=Math.min(...pen), i=pen.indexOf(m);
-    if(i===0){ drone.pos.x=b.x+Math.sign(dx||1)*hw; drone.vel.x=-drone.vel.x*0.35; drone.vel.z*=0.6; }
-    else if(i===1){ drone.pos.z=b.z+Math.sign(dz||1)*hd; drone.vel.z=-drone.vel.z*0.35; drone.vel.x*=0.6; }
+    if(i===0){ drone.pos.x=b.x+Math.sign(dx||1)*hw; bump(drone,Math.abs(drone.vel.x)); drone.vel.x=-drone.vel.x*0.35; drone.vel.z*=0.6; }
+    else if(i===1){ drone.pos.z=b.z+Math.sign(dz||1)*hd; bump(drone,Math.abs(drone.vel.z)); drone.vel.z=-drone.vel.z*0.35; drone.vel.x*=0.6; }
     else if(i===2){ drone.pos.y=b.h+0.15; if(drone.vel.y<0)drone.vel.y=0; continue; }       // 停在屋頂上不算撞
-    else { drone.pos.y=y0-0.15; if(drone.vel.y>0)drone.vel.y=-0.5; drone.vel.x*=0.7; drone.vel.z*=0.7; }
+    else { bump(drone,Math.max(0,drone.vel.y)); drone.pos.y=y0-0.15; if(drone.vel.y>0)drone.vel.y=-0.5; drone.vel.x*=0.7; drone.vel.z*=0.7; }
     hit=true;
   }
   return hit;

@@ -15,6 +15,7 @@
    ============================================================ */
 import * as THREE from 'three';
 import { triggerAnomaly as _triggerAnomaly, rollGroundEffect, dampInput } from './systems/anomaly.js';
+import { bump } from './feedback.js';
 
 /* 物理常數表——全系統唯一來源。修改請附註原因（規劃書 5.1）。 */
 export const PHYS_CONST = {
@@ -93,6 +94,7 @@ export class Drone{
     // 的位置。dampInput() 內部會凍結觸發當下的指令、之後每幀原樣重播，
     // 不再額外做姿態拉平；跟下面「貼地那一刻才擺平」的既有修正是兩回事，
     // 不受影響（那個只在真的碰到地板時才生效，這裡是「飛在空中訊號異常」）。
+    this._ctl=input;   // 2026-11-19 撞擊回饋（core/feedback.js）
     rollGroundEffect(this,this.pos.y,this.vel.y);
     const inp=dampInput(this,input,dt);
     // 切換進 angle 模式的那一幀：從目前姿態接手傾角，避免機身瞬間跳動
@@ -111,7 +113,7 @@ export class Drone{
     this.collided=false;
     const b=this.bounds;
     if(this.pos.y<C.GROUND_Y){this.pos.y=C.GROUND_Y;
-      if(this.vel.y<0){this.vel.y=-this.vel.y*C.BOUNCE*0.4;}
+      if(this.vel.y<0){bump(this,-this.vel.y,'floor');this.vel.y=-this.vel.y*C.BOUNCE*0.4;}
       // 2026-08-02 修正（使用者回報：acro／pro 模式落地後方向亂掉、不會擺回正面）：
       // pro 模式的姿態只由角速度積分而來，完全沒有跟地面互動的機制——邊界反彈
       // 只處理了位置/垂直速度，姿態不管墜地當下是什麼角度都會維持原樣，等於
@@ -127,8 +129,10 @@ export class Drone{
     }
     if(this.pos.y>b.y){this.pos.y=b.y; if(this.vel.y>0)this.vel.y=0;}
     if(Math.abs(this.pos.x)>b.x){this.pos.x=Math.sign(this.pos.x)*b.x;
+      bump(this,Math.abs(this.vel.x));
       this.vel.x=-this.vel.x*C.BOUNCE; this.collided=true;}
     if(Math.abs(this.pos.z)>b.z){this.pos.z=Math.sign(this.pos.z)*b.z;
+      bump(this,Math.abs(this.vel.z));
       this.vel.z=-this.vel.z*C.BOUNCE; this.collided=true;}
   }
   _arcade(dt,inp,C){

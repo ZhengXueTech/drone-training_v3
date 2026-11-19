@@ -411,7 +411,7 @@ export class InputManager{
     if(gp){
       const cfg=gpCfgRead(gp);
       globalThis.__ndBtnLabels=this.btnLabels(gp);   // hud.setGpBar 依此把 {gear} 這類代號換成這支手把上的鍵名
-      const o={ device:'gamepad', id:gp.id,
+      const o={ device:'gamepad', id:gp.id, pad:gp.index,
         throttle:this.gpAxis(gp,'throttle',cfg), yaw:this.gpAxis(gp,'yaw',cfg),
         pitch:this.gpAxis(gp,'pitch',cfg), roll:this.gpAxis(gp,'roll',cfg),
         btn:(name)=>this.gpBtn(gp,name,cfg),
@@ -445,7 +445,7 @@ export class InputManager{
       const gp=gps.find(g=>g.index===ctl.gpIndex);
       if(!gp) return none;
       const cfg=gpCfgRead(gp);
-      return { device:'gamepad', id:gp.id,
+      return { device:'gamepad', id:gp.id, pad:gp.index,
         throttle:this.gpAxis(gp,'throttle',cfg), yaw:this.gpAxis(gp,'yaw',cfg),
         pitch:this.gpAxis(gp,'pitch',cfg), roll:this.gpAxis(gp,'roll',cfg),
         btn:(name)=>this.gpBtn(gp,name,cfg),

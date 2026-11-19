@@ -39,6 +39,7 @@ import { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField,
          resolveCollisions, checkGoal, SOCCER_FEEL } from '../core/systems/soccer.js';
 import { updateSoccerAI, AI_DIFF } from '../core/systems/ai.js';
 import { sfx } from '../core/audio.js';
+import { rumbleOn, setRumble } from '../core/feedback.js';
 import { progress } from '../data/progress.js';
 import { getLevel } from '../data/levels-manifest.js';
 
@@ -252,6 +253,8 @@ function showPauseModal(){
         onClick:()=>{hud.cycleDensity();showPauseModal();}},
       {id:'b-audio',label:'音效：'+(sfx.enabled?'開':'關'),
         onClick:()=>{sfx.toggle();sfx.play('click');showPauseModal();}},
+      {id:'b-rumble',label:'碰撞震動：'+(rumbleOn()?'開':'關'),
+        onClick:()=>{setRumble(!rumbleOn());showPauseModal();}},
       {id:'b-restart',label:'重新開賽',onClick:()=>location.reload()}]});
 }
 

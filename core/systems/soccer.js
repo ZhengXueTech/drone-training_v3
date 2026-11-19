@@ -15,6 +15,7 @@
    ============================================================ */
 import * as THREE from 'three';
 import { rollGroundEffect, dampInput, triggerAnomaly as _triggerAnomaly } from './anomaly.js';
+import { bump } from '../feedback.js';
 
 /* ── FAI F9A-B 場地常數（公尺）── */
 export const FIELD={
@@ -50,7 +51,7 @@ export const SOCCER_PHYS={
   GRAVITY:-9.81, HOVER:9.81,
   THRMAX:14, PITCHMAX:8, YAWMAX:2.8,
   DRAG_PER_SEC:Math.pow(0.87,60),   // [FIX bug#6] 0.87/幀@60fps → dt 化
-  WBOUNCE:0.35, FBOUNCE:0.18,
+  WBOUNCE:0.6, FBOUNCE:0.35,   // 2026-11-19 老師回饋「球機碰撞回彈不明顯」：0.35／0.18 → 0.6／0.35（球框有彈性，撞網會彈回來）
 };
 
 export const TA=0, TB=1;
@@ -204,6 +205,7 @@ export class SoccerDrone{
      feel：見 SOCCER_FEEL；不傳＝原本手感。 */
   step(dt,ctl,SF=1,noHold=false,feel=null){
     const P=SOCCER_PHYS;
+    this._ctl=ctl;   // 2026-11-19 記下輸入來源 → core/feedback.js 撞擊回饋（AI 不經過 step，所以沒有）
     rollGroundEffect(this,this.pos.y-FIELD.BR,this.vel.y);
     const inp=dampInput(this,ctl,dt);
     const GM=GEAR_MULT[this.gear]??1.0;
@@ -227,12 +229,12 @@ export class SoccerDrone{
     this.vel.multiplyScalar(Math.pow(this._dragPerSec??P.DRAG_PER_SEC,dt));   // [FIX bug#6]；_dragPerSec＝玩家機速手感（AI 不設）
     this.pos.addScaledVector(this.vel,dt);
     // 地板/天花板/牆
-    if(this.pos.y<F.BR){this.pos.y=F.BR;this.vel.y=Math.abs(this.vel.y)*P.FBOUNCE;}
-    if(this.pos.y>F.FH-F.BR){this.pos.y=F.FH-F.BR;this.vel.y=-Math.abs(this.vel.y)*P.WBOUNCE;}
-    if(this.pos.x<-HW+F.BR){this.pos.x=-HW+F.BR;this.vel.x= Math.abs(this.vel.x)*P.WBOUNCE;}
-    if(this.pos.x> HW-F.BR){this.pos.x= HW-F.BR;this.vel.x=-Math.abs(this.vel.x)*P.WBOUNCE;}
-    if(this.pos.z<-HL+F.BR){this.pos.z=-HL+F.BR;this.vel.z= Math.abs(this.vel.z)*P.WBOUNCE;}
-    if(this.pos.z> HL-F.BR){this.pos.z= HL-F.BR;this.vel.z=-Math.abs(this.vel.z)*P.WBOUNCE;}
+    if(this.pos.y<F.BR){this.pos.y=F.BR;bump(this,-this.vel.y,'floor');this.vel.y=Math.abs(this.vel.y)*P.FBOUNCE;}
+    if(this.pos.y>F.FH-F.BR){this.pos.y=F.FH-F.BR;bump(this,this.vel.y);this.vel.y=-Math.abs(this.vel.y)*P.WBOUNCE;}
+    if(this.pos.x<-HW+F.BR){this.pos.x=-HW+F.BR;bump(this,-this.vel.x);this.vel.x= Math.abs(this.vel.x)*P.WBOUNCE;}
+    if(this.pos.x> HW-F.BR){this.pos.x= HW-F.BR;bump(this,this.vel.x);this.vel.x=-Math.abs(this.vel.x)*P.WBOUNCE;}
+    if(this.pos.z<-HL+F.BR){this.pos.z=-HL+F.BR;bump(this,-this.vel.z);this.vel.z= Math.abs(this.vel.z)*P.WBOUNCE;}
+    if(this.pos.z> HL-F.BR){this.pos.z= HL-F.BR;bump(this,this.vel.z);this.vel.z=-Math.abs(this.vel.z)*P.WBOUNCE;}
     this._ringBounce();
   }
   /* 球門環碰撞（沿基本版 goalRingBounce） */
@@ -246,7 +248,11 @@ export class SoccerDrone{
         const tx=r>0.001?dx/r*F.GR:F.GR, ty=r>0.001?dy/r*F.GR:0;
         const nx=dx-tx, ny=dy-ty, nz=dz;
         const nl=Math.sqrt(nx*nx+ny*ny+nz*nz);
-        if(nl>0.001){const f=4/nl;
+        if(nl>0.001){
+          // 2026-11-19：原本只加一個固定推力（4），撞環幾乎沒感覺 → 先把「往環裡衝」的速度分量反彈回來（恢復係數 0.6），再加推力 6
+          const ux=nx/nl, uy=ny/nl, uz=nz/nl, vn=this.vel.x*ux+this.vel.y*uy+this.vel.z*uz;
+          if(vn<0){ bump(this,-vn,'ring'); const k=-1.6*vn; this.vel.x+=ux*k; this.vel.y+=uy*k; this.vel.z+=uz*k; }
+          const f=6/nl;
           this.vel.x+=nx*f; this.vel.y+=ny*f; this.vel.z+=nz*f;}
       }
     }
@@ -309,9 +315,10 @@ export function resolveCollisions(drones){
       // 進球回程（不可擋）或同隊互碰：只輕輕推開，不失控、不轉
       const returning=((a.mustReturn||b.mustReturn)&&a.team!==b.team)||a.team===b.team;
       if(vn<0){
-        const e=returning?0.2:0.85, jimp=-(1+e)*vn/2;          // 等質量：各分一半
-        // 球框有彈性：再多給兩邊一個往外彈的力（接近速度 × 0.3），撞上去的一方也會被彈回來，不會只是停住
-        const push=returning?0:closing*0.3;
+        const e=returning?0.2:0.95, jimp=-(1+e)*vn/2;          // 等質量：各分一半（2026-11-19：0.85 → 0.95）
+        // 球框有彈性：再多給兩邊一個往外彈的力（接近速度 × 0.45；2026-11-19 由 0.3 加大），撞上去的一方也會被彈回來，不會只是停住
+        const push=returning?0:closing*0.45;
+        if(onset){ bump(a,closing,'drone'); bump(b,closing,'drone'); }
         a.vel.addScaledVector(n,jimp+push); b.vel.addScaledVector(n,-jimp-push);
         if(!returning&&onset&&closing>0.4){
           const kt=Math.min(0.7,closing*0.12);

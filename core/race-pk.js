@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import { Engine } from './engine.js';
 import { InputManager } from './input.js';
 import { Drone } from './physics.js';
+import { bump } from './feedback.js';
 import { UI } from './ui.js';
 import { attachTouchSeat } from './hud.js';
 import { buildBasicField, makeRing } from './world.js';
@@ -100,17 +101,17 @@ function collide(d){
     const dx=d.pos.x-o.x, dz=d.pos.z-o.z, dd=Math.hypot(dx,dz), R=o.r+0.3;
     if(dd<R&&dd>1e-4){ const k=(R-dd)/dd; d.pos.x+=dx*k; d.pos.z+=dz*k;
       const nx=dx/dd, nz=dz/dd, vn=d.vel.x*nx+d.vel.z*nz;
-      if(vn<0){ d.vel.x-=1.35*vn*nx; d.vel.z-=1.35*vn*nz; }
+      if(vn<0){ bump(d,-vn); d.vel.x-=1.35*vn*nx; d.vel.z-=1.35*vn*nz; }
       d.vel.x*=0.6; d.vel.z*=0.6; hit=true; }
   }
   for(const b of BOXES){
     const y0=b.y0||0, hw=b.w/2+0.3, hd=b.d/2+0.3, dx=d.pos.x-b.x, dz=d.pos.z-b.z, y=d.pos.y;
     if(Math.abs(dx)>=hw||Math.abs(dz)>=hd||y>=b.h+0.15||y<=y0-0.15)continue;
     const pen=[hw-Math.abs(dx),hd-Math.abs(dz),b.h+0.15-y,y0>0?y-(y0-0.15):1e9], m=Math.min(...pen), k=pen.indexOf(m);
-    if(k===0){ d.pos.x=b.x+Math.sign(dx||1)*hw; d.vel.x=-d.vel.x*0.35; d.vel.z*=0.6; }
-    else if(k===1){ d.pos.z=b.z+Math.sign(dz||1)*hd; d.vel.z=-d.vel.z*0.35; d.vel.x*=0.6; }
+    if(k===0){ d.pos.x=b.x+Math.sign(dx||1)*hw; bump(d,Math.abs(d.vel.x)); d.vel.x=-d.vel.x*0.35; d.vel.z*=0.6; }
+    else if(k===1){ d.pos.z=b.z+Math.sign(dz||1)*hd; bump(d,Math.abs(d.vel.z)); d.vel.z=-d.vel.z*0.35; d.vel.x*=0.6; }
     else if(k===2){ d.pos.y=b.h+0.15; if(d.vel.y<0)d.vel.y=0; continue; }
-    else { d.pos.y=y0-0.15; if(d.vel.y>0)d.vel.y=-0.5; d.vel.x*=0.7; d.vel.z*=0.7; }
+    else { bump(d,Math.max(0,d.vel.y)); d.pos.y=y0-0.15; if(d.vel.y>0)d.vel.y=-0.5; d.vel.x*=0.7; d.vel.z*=0.7; }
     hit=true;
   }
   return hit;

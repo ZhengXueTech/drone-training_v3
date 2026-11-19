@@ -74,6 +74,22 @@ class Sfx{
       if(name==='finish')delay+=0.12;   // 完賽和弦琶音
     }
   }
+  /* 2026-11-19 撞擊音效（core/feedback.js 呼叫）：一記低頻「咚」＋短促雜音，s＝0..1 力道 */
+  hit(s=0.5,kind='wall'){
+    if(!this.enabled||!this._ensure())return;
+    const ctx=this.ctx, t0=ctx.currentTime, v=0.08+0.32*s;
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='sine'; const f=kind==='drone'?170:kind==='floor'?90:130;
+    o.frequency.setValueAtTime(f,t0); o.frequency.exponentialRampToValueAtTime(f*0.45,t0+0.16);
+    g.gain.setValueAtTime(v,t0); g.gain.exponentialRampToValueAtTime(0.001,t0+0.2);
+    o.connect(g).connect(ctx.destination); o.start(t0); o.stop(t0+0.22);
+    if(!this._noise){ const n=ctx.sampleRate*0.12|0, b=ctx.createBuffer(1,n,ctx.sampleRate), a=b.getChannelData(0);
+      for(let i=0;i<n;i++)a[i]=(Math.random()*2-1)*(1-i/n); this._noise=b; }
+    const ns=ctx.createBufferSource(), nf=ctx.createBiquadFilter(), ng=ctx.createGain();
+    ns.buffer=this._noise; nf.type='bandpass'; nf.frequency.value=kind==='drone'?1800:1100; nf.Q.value=0.8;
+    ng.gain.setValueAtTime(v*0.7,t0); ng.gain.exponentialRampToValueAtTime(0.001,t0+0.1);
+    ns.connect(nf).connect(ng).connect(ctx.destination); ns.start(t0);
+  }
   /* 低電量提醒節流（每 2.5 秒最多一次），關卡迴圈可每幀呼叫 */
   lowBatteryTick(dt,pct){
     if(pct>20){this._lowbatT=0;return;}
