@@ -43,7 +43,7 @@ export function cloudInit(){
         // 老師重新部署後網址可能換了：這台記的是舊網址就會整個連不上。每小時最多一次，背景向中心重查這個代碼，網址不同就換成新的。
         if(c.code&&_center&&!(Date.now()-(+c.checkedAt||0)<3600000)){
           classLookup(c.code).then(r=>{ if(!r||!r.ok||!r.found)return;
-            const fresh={code:String(r.code||c.code),school:String(r.school||''),teacher:String(r.teacher||''),url:r.url,checkedAt:Date.now()};
+            const fresh={code:String(r.code||c.code),school:String(r.school||''),teacher:String(r.teacher||''),url:r.url,v3:!!r.v3,checkedAt:Date.now()};
             if(_class&&_class.code===c.code){ _class=fresh; _url=r.url; try{ localStorage.setItem(CLASS_KEY,JSON.stringify(fresh)); }catch{} } }).catch(()=>{});
         } }
       else if(_cfg.classCode&&_center){ const r=await classLookup(_cfg.classCode); if(r.ok&&r.found)classSet(r); }
@@ -57,6 +57,8 @@ export function localMode(){ return _local; }
 export const localUrl=p=>new URL('../local/'+p,import.meta.url).href;
 /* 目前連到哪位老師的班級：{code, school, teacher, url} 或 null；pinned＝資料夾設定直接指定的（不能在畫面上換） */
 export function classInfo(){ return _class; }
+/* 新版班級（老師自助申請、座號＋登入碼）？ */
+export function classIsV3(){ return !!(_class&&_class.v3); }
 /* 問中心：這個代碼連到哪位老師？回傳 {ok, found, code, school, teacher, url} */
 export async function classLookup(code){
   code=String(code||'').trim().toUpperCase();
@@ -70,7 +72,7 @@ export async function classLookup(code){
 }
 export function classSet(info){
   if(!info||!okUrl(info.url))return false;
-  _class={code:String(info.code||''),school:String(info.school||''),teacher:String(info.teacher||''),url:info.url,checkedAt:Date.now()}; _url=info.url;
+  _class={code:String(info.code||''),school:String(info.school||''),teacher:String(info.teacher||''),url:info.url,v3:!!info.v3,checkedAt:Date.now()}; _url=info.url;
   try{ localStorage.setItem(CLASS_KEY,JSON.stringify(_class)); localStorage.removeItem(SCH_KEY); }catch{}
   _schools=null; _schP=null; return true;
 }
@@ -112,6 +114,8 @@ async function call(url,opt){
 export async function cloudPost(obj){
   await cloudInit(); if(!_url)return {ok:false,code:'off',error:'沒有設定雲端'};
   // text/plain：瀏覽器不會先發預檢請求，Apps Script 才收得到
+  // 新版班級（2026-11-19）：網址是中心本身，每個請求帶老師代碼 tcode，中心才知道寫進哪位老師的試算表
+  if(_class&&_class.v3&&_class.code)obj={...obj,tcode:_class.code};
   return call(_url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(obj)});
 }
 export async function cloudGet(action,params){

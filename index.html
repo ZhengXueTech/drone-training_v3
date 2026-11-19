@@ -17,15 +17,16 @@
    → 存進這台瀏覽器（跟精靈頁老師功能填的是同一格），再把參數從網址列擦掉。
    GitHub 上的 data/cloud-config.json 保持空白；有還原卡的電腦每次從入口進來就會重新存好。 */
 (function(){ try{
-  var q=new URLSearchParams(location.search), g=q.get('gas'), c=q.get('cls');
+  var q=new URLSearchParams(location.search), g=q.get('gas'), c=q.get('cls'), rm=q.get('room');
   if(!g&&!c) return;
+  if(rm&&rm.length<=10){ sessionStorage.setItem('nd3.room',rm); sessionStorage.setItem('nd3.wantLogin','1'); }   // 新版班級的 QR 碼：哪一班（2026-11-19）
   if(g&&/^https:\/\/script\.google\.com\/(a\/macros\/[^\/]+|macros)\/s\/[\w-]+\/(exec|dev)$/.test(g)){
     var old=''; try{ old=JSON.parse(localStorage.getItem('nd.settings.gasUrl'))||''; }catch(e){}
     if(old!==g){ localStorage.setItem('nd.settings.gasUrl',JSON.stringify(g)); localStorage.removeItem('nd.cache.cloudProfiles'); }
     sessionStorage.setItem('nd3.entry','1');
   }
   if(c&&/^[\w-]{1,20}$/.test(c)) sessionStorage.setItem('nd3.entryClass',c);
-  q.delete('gas'); q.delete('cls'); var r=q.toString();
+  q.delete('gas'); q.delete('cls'); q.delete('room'); var r=q.toString();
   history.replaceState(null,'',location.pathname+(r?'?'+r:'')+location.hash);
 }catch(e){} })();
 </script>
@@ -171,24 +172,27 @@ themeLabel();
 /* 動態背景：載入失敗（舊電腦沒有 WebGL）就算了，首頁照常可用 */
 import('./core/home-bg.js').then(m=>m.startHomeBg(document.getElementById('bg'))).catch(()=>{});
 
-/* 從老師的 GAS 入口進來：連班級＋提示（失敗也不影響首頁） */
+/* 從老師的 GAS 入口或班級 QR 碼進來：連班級＋提示；新版班級再跳登入框（失敗也不影響首頁） */
+const mountLogin=open=>import('./core/class-login.js').then(m=>m.mountClassLogin({open})).catch(()=>{});
 if(sessionStorage.getItem('nd3.entry')||sessionStorage.getItem('nd3.entryClass')){
   (async()=>{
     const toast=(t,ok=true)=>{ const d=document.createElement('div'); d.textContent=t;
       d.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:50;padding:10px 18px;border-radius:12px;font-size:15px;'
         +'background:rgba(8,20,40,.92);border:1px solid '+(ok?'#3ee6b0':'#ffb44a')+';color:#fff;box-shadow:0 6px 24px rgba(0,0,0,.4)';
       document.body.appendChild(d); setTimeout(()=>d.remove(),6000); };
+    const want=!!sessionStorage.getItem('nd3.wantLogin'); sessionStorage.removeItem('nd3.wantLogin');
     try{
       const api=await import('./core/cloud-api.js'); await api.cloudInit();
       const code=sessionStorage.getItem('nd3.entryClass'); sessionStorage.removeItem('nd3.entryClass'); sessionStorage.removeItem('nd3.entry');
       if(code){
         const r=await api.classLookup(code);
-        if(r&&r.ok&&r.found&&api.classSet(r)) toast('☁ 已連上雲端：'+(r.school||'')+' '+(r.teacher||'')+' 的班級，成績會上傳');
+        if(r&&r.ok&&r.found&&api.classSet(r)){ if(r.v3)mountLogin(true); else toast('☁ 已連上雲端：'+(r.school||'')+' '+(r.teacher||'')+' 的班級，成績會上傳'); }
         else toast('☁ 已連上雲端，但找不到班級代碼「'+code+'」，請問老師',false);
       } else toast(api.centerUrl()?'☁ 已連上老師的雲端，成績與搖桿設定可以上傳':'雲端網址不正確，請問老師',!!api.centerUrl());
     }catch{ toast('雲端暫時連不上，先照常飛，成績存在這台電腦',false); }
+    if(!want)mountLogin(false);
   })();
-}
+} else mountLogin(false);
 </script>
 <script type="module" src="core/gp-nav-boot.js"></script>
 </body>

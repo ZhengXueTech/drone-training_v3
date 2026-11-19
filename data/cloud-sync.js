@@ -13,7 +13,12 @@ import { localEnqueue, localFlush } from './local-sync.js';
 import { ownerKeyOf, switchOwner } from './owner.js';
 import { pickBest, isBetter } from './score-rule.js';
 
-const Q_KEY='nd.cloud.queue', AUTH_KEY='nd.cloud.auth', MAX_Q=200;
+const Q_KEY='nd.cloud.queue', AUTH_KEY='nd.cloud.auth', AUTH3_KEY='nd.cloud.auth3', MAX_Q=200;
+/* 新版班級（2026-11-19）：登入只記在這個分頁（sessionStorage），關掉瀏覽器就登出——電腦教室下一位同學不會用到上一位的身分 */
+function tcodeNow(){ try{ const c=JSON.parse(localStorage.getItem('nd.class')||'null'); return c&&c.v3?String(c.code||''):''; }catch{ return ''; } }
+function isV3(){ try{ const c=JSON.parse(localStorage.getItem('nd.class')||'null'); return !!(c&&c.v3); }catch{ return false; } }
+function getAuth(){ if(isV3()){ try{ const v=sessionStorage.getItem(AUTH3_KEY); return v?JSON.parse(v):null; }catch{ return null; } } return get(AUTH_KEY,null); }
+function setAuth(v){ if(isV3()){ try{ sessionStorage.setItem(AUTH3_KEY,JSON.stringify(v)); }catch{} } else set(AUTH_KEY,v); }
 const get=(k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch{ return f; } };
 const set=(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch{} };
 let _flushing=false, _lastError='';
@@ -22,9 +27,9 @@ const emit=()=>listeners.forEach(f=>{ try{f(status());}catch{} });
 
 export function onCloudStatus(f){ listeners.add(f); return ()=>listeners.delete(f); }
 /* 給首頁顯示：{enabled, loggedIn, pending, error} */
-export function status(){ return {enabled:!!cloudUrl(), loggedIn:!!get(AUTH_KEY,null), pending:get(Q_KEY,[]).length, error:_lastError}; }
-export function auth(){ return get(AUTH_KEY,null); }
-export function logout(){ try{ localStorage.removeItem(AUTH_KEY); }catch{} emit(); }
+export function status(){ return {enabled:!!cloudUrl(), loggedIn:!!getAuth(), pending:get(Q_KEY,[]).length, error:_lastError}; }
+export function auth(){ return getAuth(); }
+export function logout(){ try{ if(isV3())sessionStorage.removeItem(AUTH3_KEY); else localStorage.removeItem(AUTH_KEY); }catch{} emit(); }
 export const defaultPw=(classId,seat)=>String(classId)+(/^\d$/.test(String(seat))?'0'+seat:String(seat));
 
 /* 把雲端的一關進度併進本機：取分數高的、次數多的，完成過就算完成 */
@@ -64,7 +69,7 @@ export async function login({school,classId,seat,name,pw},opt={}){
   if(!r.ok)return r.code==='busy'?{...r,error:'現在太多人同時登入，請過幾秒再按一次登入。'}:r;
   // 先換人：這台裝置上如果留著別人的成績，收起來，不要併給現在登入的這個人（data/owner.js）
   const switched=switchOwner(ownerKeyOf(who),r.name||who.name);
-  set(AUTH_KEY,{...who,name:r.name||who.name});
+  setAuth({...who,name:r.name||who.name});
   let restored=0, pushed=0;
   const mine={...who,name:r.name||who.name}, remote=r.progress||{};
   for(const id in (r.progress||{})){
@@ -80,7 +85,7 @@ export async function login({school,classId,seat,name,pw},opt={}){
       const k=localStorage.key(i); if(!k||!k.startsWith('nd.progress.'))continue;
       const id=k.slice(12), l=get(k,null); if(!l||!/^[a-z0-9-]+$/i.test(id)||queued.has(id)||!better(l,remote[id],id))continue;
       q.push({levelId:id,score:typeof l.bestScore==='number'?l.bestScore:null,completed:!!l.completed,challenge:'標準',mode:'practice',examCode:'',
-        metrics:{note:'補傳本機紀錄'},progress:l,badges:get('nd.badges',[]).map(b=>({id:b.id,emoji:b.emoji,name:b.name,earnedAt:b.earnedAt})),device:'',at:l.lastAttempt||new Date().toISOString(),_who:mine,_url:cloudUrl()});
+        metrics:{note:'補傳本機紀錄'},progress:l,badges:get('nd.badges',[]).map(b=>({id:b.id,emoji:b.emoji,name:b.name,earnedAt:b.earnedAt})),device:'',at:l.lastAttempt||new Date().toISOString(),_who:mine,_url:cloudUrl(),_tcode:tcodeNow()});
       pushed++;
     }
     if(pushed){ while(q.length>MAX_Q)q.shift(); set(Q_KEY,q); }
@@ -110,7 +115,7 @@ export function enqueue(levelId,result,merged,badges){
   q.push({levelId,score:typeof result.score==='number'?result.score:null,completed:!!result.completed,
     challenge:result.challenge||'標準',mode:examCode?'exam':'practice',examCode,
     metrics,progress:merged,badges:(badges||[]).map(b=>({id:b.id,emoji:b.emoji,name:b.name,earnedAt:b.earnedAt})),
-    device:result.device||'',at:new Date().toISOString(),_who:a,_url:cloudUrl()});   // _who：這一筆是誰的。換人登入後，還沒傳完的仍用原本那個人的身分送
+    device:result.device||'',at:new Date().toISOString(),_who:a,_url:cloudUrl(),_tcode:tcodeNow()});   // _who：這一筆是誰的。換人登入後，還沒傳完的仍用原本那個人的身分送
   while(q.length>MAX_Q)q.shift();
   set(Q_KEY,q); emit(); flush();
 }
@@ -122,8 +127,8 @@ export async function flush(){
     if(!cloudUrl()||!a)return;
     for(;;){
       const q=get(Q_KEY,[]); if(!q.length)break;
-      if(q[0]._url&&q[0]._url!==cloudUrl()){ _lastError='有成績是別位老師班級的，換回那位老師後才會上傳'; break; }     // 換了老師：不把成績送錯地方
-      const w=q[0]._who||a, body={...q[0]}; delete body._who; delete body._retried; delete body._url;
+      if((q[0]._url&&q[0]._url!==cloudUrl())||(q[0]._tcode||'')!==tcodeNow()&&(q[0]._tcode||tcodeNow())){ _lastError='有成績是別位老師班級的，換回那位老師後才會上傳'; break; }     // 換了老師：不把成績送錯地方
+      const w=q[0]._who||a, body={...q[0]}; delete body._who; delete body._retried; delete body._url; delete body._tcode;
       const r=await postBusy({action:'record',school:w.school,classId:w.classId,seat:w.seat,name:w.name,pw:w.pw,...body},null,6);
       if(r.ok){ _lastError='';
         if(r.exam===false){ const ex=examState(); if(ex&&ex.code===q[0].examCode){ ex.note='這一次沒有算進考核：'+(r.examError||''); if(/用完|關閉/.test(r.examError||''))ex.used=ex.limit; saveExam(ex); } }
