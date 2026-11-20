@@ -164,12 +164,12 @@ export function buildSoccerField(scene){
   const goals=[];
   [{z:-F.GZ,col:0x2266ff,em:0x001155},{z:F.GZ,col:0xff2233,em:0x550011}].forEach(d=>{
     const torus=new THREE.Mesh(new THREE.TorusGeometry(F.GR,F.GT,20,64),
-      new THREE.MeshStandardMaterial({color:d.col,emissive:d.em,emissiveIntensity:1.1,metalness:.4,roughness:.3}));
+      new THREE.MeshStandardMaterial({color:d.col,emissive:d.em,emissiveIntensity:0.45,metalness:.25,roughness:.55}));   // 2026-11-21：降低自發光、少反光（看久不刺眼）
     // FAI F9A-B：環軸向厚度上限 10cm（徑向 15cm 由 D1/D2 幾何決定）
     // → 圓管 torus 沿 Z 壓扁 10/15（SC4 Vol F9 2026 對照，2026-07-20 查證）
     torus.scale.z=10/15;
     torus.position.set(0,F.GY,d.z); scene.add(torus);
-    const gl=new THREE.PointLight(d.col,1.5,2.5); gl.position.set(0,F.GY,d.z); scene.add(gl);
+    const gl=new THREE.PointLight(d.col,0.3,1.5);   // 2026-11-21：1.5→0.3，環內不再亮成一圈白光 gl.position.set(0,F.GY,d.z); scene.add(gl);
     const wl=F.FH-F.GY;
     const wire=new THREE.Mesh(new THREE.CylinderGeometry(.004,.004,wl,4),
       new THREE.MeshBasicMaterial({color:0x334455}));

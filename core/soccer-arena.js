@@ -208,7 +208,8 @@ setArenaHook({
 function addGoalGlow(){
   if(!GOALS)return;
   for(const g of GOALS){ if(g._glow){ g.mesh.remove(g._glow); g._glow=null; }
-    if(gfxLevel()==='high'){ const col=g.mesh.material.color.getHex();
+    if(false){   // 2026-11-21 老師：「不要有暈光效果，看久會暈」→ 球門光暈關掉（各畫質都不加）
+      const col=g.mesh.material.color.getHex();
       // 2026-11-19：原本光暈是包住整個環的粗圓管（管徑 GT×2.6），往內蓋進球門洞，洞看起來只剩 16 cm 左右 → 改成只在外圈發光，內徑保持 40 cm
       const halo=new THREE.Mesh(new THREE.RingGeometry(F.GO-0.01,F.GO+0.12,48,1),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.28,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
       g.mesh.add(halo); g._glow=halo; } }

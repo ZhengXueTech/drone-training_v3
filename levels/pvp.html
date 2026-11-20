@@ -494,7 +494,7 @@ engine.start((dt,simStarted)=>{
     }
   }
   goals.forEach((g,i)=>{g.mesh.rotation.z+=dt*(i?.25:.2);
-    g.light.intensity=1.2+Math.sin(performance.now()*.001*(1.1+i*.3))*.5;});
+    g.light.intensity=0.3;   /* 2026-11-21：球門燈不再呼吸閃爍（看久會暈） */});
 
   if(humanCount>=2){
     // 每一格的鏡頭在 engine.setRenderFn() 的 renderFn 內每幀呼叫 updateSplitCam()，這裡不需要重複更新
