@@ -285,11 +285,12 @@ export class SoccerDrone{
         const nx=dx-tx, ny=dy-ty, nz=dz;
         const nl=Math.sqrt(nx*nx+ny*ny+nz*nz);
         if(nl>0.001){
-          // 2026-11-19：原本只加一個固定推力（4），撞環幾乎沒感覺 → 先把「往環裡衝」的速度分量反彈回來（恢復係數 0.6），再加推力 6
+          // 2026-11-21 老師：撞球門環太 Q 彈 → 改成「擋開」：只把往環裡衝的速度消掉大部分（恢復係數 0.25），
+          // 再把機體推出環管外（改位置、不加速度）。原本每幀加 6 m/s 的推力＝像彈簧床。
           const ux=nx/nl, uy=ny/nl, uz=nz/nl, vn=this.vel.x*ux+this.vel.y*uy+this.vel.z*uz;
-          if(vn<0){ bump(this,-vn,'ring'); const k=-1.6*vn; this.vel.x+=ux*k; this.vel.y+=uy*k; this.vel.z+=uz*k; }
-          const f=6/nl;
-          this.vel.x+=nx*f; this.vel.y+=ny*f; this.vel.z+=nz*f;}
+          if(vn<0){ bump(this,-vn,'ring'); const k=-1.25*vn; this.vel.x+=ux*k; this.vel.y+=uy*k; this.vel.z+=uz*k; }
+          const pen=F.GT+F.BR-distTube;
+          this.pos.x+=ux*pen; this.pos.y+=uy*pen; this.pos.z+=uz*pen;}
       }
     }
   }
