@@ -71,7 +71,7 @@ let phase='intro'; // intro|playing|set_end|match_end
 let curSet=1, setTimer=F.SET_DUR;
 let scores={A:0,B:0}, setsWon={A:0,B:0}, setGoals={A:0,B:0}, setLog=[];
 let cageSpin=false, crouch=false, returnWarned=false;
-let diff=progress.setting('soccerDiff','hard');   // v3：預設改困難（老師 11/17）
+let diff=progress.setting('soccerDiff','med');   // 2026-11-19 預設改回中等（一守門一攔截；困難＝門前兩台夾擊）——老師 11/19 同意
 let strict=progress.setting('soccerStrict',false);   // 判定：練習寬鬆 / 正式 FAI（整球穿過）
 // 機速／飛控四檔（v1.2 新增第 4 檔）：noHold=true 時拿掉定高輔助，油門變直接推力，
 // 放開會真的下墜，比較接近真實無刷競速機手感（只影響玩家，AI 行為不變）
@@ -304,7 +304,7 @@ engine.start((dt,simStarted)=>{
   // 機體同步（soccer yaw=0 朝 +Z；drone-styles 機頭 -Z → +PI 轉正）
   for(const d of drones){
     d.mesh.position.copy(d.pos);
-    d.mesh.rotation.y=d.yaw+Math.PI;
+    d.mesh.rotation.order='YXZ'; d.mesh.rotation.y=d.yaw+Math.PI; d.mesh.rotation.x=-(d.tP||0); d.mesh.rotation.z=(d.tR||0);   // 2026-11-21 擬真：機身跟著傾斜（看得出前傾／側傾）
     if(cageSpin&&d.mesh.userData.spin){
       d.mesh.userData.spin.rotation.x+=dt*1.1;
       d.mesh.userData.spin.rotation.z+=dt*.6;

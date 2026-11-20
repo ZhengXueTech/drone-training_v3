@@ -76,12 +76,21 @@ export const GEAR_MULT={1:0.55,2:1.0};   // 2026-09-30：一檔 0.7→0.55，兩
    由關卡把 SOCCER_FEEL[機速代碼] 傳給 step() 的第 5 個參數；不傳＝原本手感（AI 與 pvp 不受影響）。 */
 /* v3（2026-11-17 老師：實機「二檔全速，場地來回約 3 秒」；舊版要 13 秒）：
    阻力變小一點（有慣性）、推力加大。標準＋二檔：全速約 4.9 m/s，6 m 場地來回約 3.1 秒；一檔約 5 秒。 */
+/* real（2026-11-21 老師：「手把玩足球太簡單；真實無人機右搖桿推滿會下衝或上衝，跟當時機身水平有關，轉彎也是」
+   → 選「標準以上都加、強度不同」＋甩尾、邊轉邊飛掉高度、加減速有延遲）：
+     lag  ＝機身傾斜跟上搖桿的時間常數（秒）——要先傾斜才開始加速，放桿要反傾才停
+     tau  ＝水平慣性時間常數（秒；取代 drag）——轉頭後速度還沿舊方向滑（甩尾）；accel 會依此換算，最高速度不變
+     alt  ＝傾斜掉高度的強度（0＝定高全補回、1＝完全不補）：垂直推力＝推力×cos(傾角)
+     lift ＝速度帶來的額外升力（平飛時快速通過＝往上飄；放桿瞬間機身回平還很快＝上衝）
+     bank ＝邊轉邊飛的額外傾斜（轉向速率×速度 → 更大傾角 → 掉更多）
+     hold ＝定高把高度慢慢拉回來的力道（油門放中間時；0＝不拉回，專家無定高） */
 export const SOCCER_FEEL={
-  slow:  {drag:0.93, accel:2.75, yaw:0.85},  // 慢速有刷：SF 0.55 → 二檔全速約 2.7 m/s
-  std:   {drag:0.93, accel:2.75, yaw:1.0},
-  race:  {drag:0.955,accel:1.25, yaw:1.3},   // 慣性更大、更快（全速約 6.5 m/s）
-  expert:{drag:0.955,accel:1.25, yaw:1.3},   // 同 race，另由 noHold 拿掉定高
+  slow:  {drag:0.93, accel:2.75, yaw:0.85},  // 慢速有刷：SF 0.55 → 二檔全速約 2.7 m/s（不加擬真）
+  std:   {drag:0.93, accel:2.75, yaw:1.0, real:{lag:0.12,tau:0.45,alt:0.60,lift:0.10,bank:0.10,hold:4}},
+  race:  {drag:0.955,accel:1.25, yaw:1.3, real:{lag:0.18,tau:0.80,alt:1.00,lift:0.16,bank:0.16,hold:2.5}},   // 慣性更大、更快（全速約 6.5 m/s）
+  expert:{drag:0.955,accel:1.25, yaw:1.3, real:{lag:0.18,tau:0.80,alt:1.00,lift:0.16,bank:0.16,hold:0}},   // 同 race，另由 noHold 拿掉定高
 };
+const TILT_MAX=0.6;   // 推滿時機身傾角（rad，約 34°）
 
 /* 六席編制（基本版 DCFG）：[0]=玩家 A-striker */
 export const SOCCER_SEATS=[
@@ -192,6 +201,7 @@ export class SoccerDrone{
     this.yaw=this.team===TA?0:Math.PI; this.prevZ=this.pos.z; this.spinV=0;
     this.mustReturn=false; this.aiState='stage'; this.aiT=Math.random()*1.5;
     this.anomalyT=0; this._geArmed=false; this._frozenInput=null;   // gear 是裝備設定，不隨每球重置
+    this.tP=0; this.tR=0; this.tilt=0; this.holdY=null;
   }
   triggerAnomaly(dur){ _triggerAnomaly(this,dur); }
   /* 玩家輸入（統一語意合約：throttle+=升、yaw+=右轉、pitch+=前進、roll+=右移）
@@ -212,8 +222,34 @@ export class SoccerDrone{
     const AM=feel?feel.accel:1, YM=feel?feel.yaw:1;
     this._dragPerSec=feel?Math.pow(feel.drag,60):null;
     const ay=noHold?Math.max(0,inp.throttle)*(P.HOVER+P.THRMAX):P.HOVER+inp.throttle*P.THRMAX*SF;
-    this.integrate(dt, -inp.roll*P.PITCHMAX*SF*GM*AM, ay,
-                       inp.pitch*P.PITCHMAX*SF*GM*AM, -inp.yaw*P.YAWMAX*YM);
+    const R=feel&&feel.real;
+    if(!R){
+      this.integrate(dt, -inp.roll*P.PITCHMAX*SF*GM*AM, ay,
+                         inp.pitch*P.PITCHMAX*SF*GM*AM, -inp.yaw*P.YAWMAX*YM);
+      return;
+    }
+    // ── 擬真：機身傾角追搖桿（有延遲）→ 水平推力＝sin(傾角)、垂直推力＝cos(傾角) ──
+    const kOld=-Math.log(feel.drag)*60, kNew=1/R.tau;         // 換算：最高速度＝推力/阻力係數，維持原本最高速度
+    this._dragPerSec=Math.exp(-kNew);
+    const f=1-Math.exp(-dt/R.lag);
+    this.tP=(this.tP||0)+(inp.pitch*TILT_MAX-(this.tP||0))*f;
+    this.tR=(this.tR||0)+(-inp.roll*TILT_MAX-(this.tR||0))*f;
+    const sMax=Math.sin(TILT_MAX), H=P.PITCHMAX*SF*GM*AM*kNew/kOld/sMax;
+    const ax=Math.sin(this.tR)*H, az=Math.sin(this.tP)*H;
+    const yr=-inp.yaw*P.YAWMAX*YM;
+    const vh=Math.hypot(this.vel.x,this.vel.z);
+    const tilt=Math.min(1.2,Math.hypot(this.tP,this.tR)+R.bank*Math.abs(yr)*vh/3);   // 邊轉邊飛：額外傾斜
+    const thrust=ay;                                            // 這一刻馬達總推力（定高時 ≈ 懸停推力）
+    const loss=thrust*(1-Math.cos(tilt))*R.alt;                 // 傾斜掉的垂直推力（定高只補回 1-alt）
+    const lift=R.lift*vh*vh*Math.cos(tilt)*Math.max(0,1-tilt/TILT_MAX);   // 速度帶來的升力：機身越平越明顯（放桿上衝）
+    this.tilt=tilt;
+    // 定高：油門在中間時，飛控會把高度慢慢拉回原本的高度（先掉、再回來）；推拉油門＝重新記住目前高度
+    let hold=0;
+    if(!noHold&&R.hold){
+      if(this.holdY==null||Math.abs(inp.throttle)>0.08) this.holdY=this.pos.y;
+      else hold=Math.max(-4,Math.min(4,R.hold*(this.holdY-this.pos.y)-1.6*Math.sqrt(R.hold)*this.vel.y));
+    }else this.holdY=null;
+    this.integrate(dt, ax, ay-loss+lift+hold, az, yr);
   }
   /* 原始積分（AI moveTo 直接用；ax/az 依 yaw 轉世界系——沿基本版行為） */
   integrate(dt,ax,ay,az,yr){

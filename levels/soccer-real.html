@@ -468,7 +468,7 @@ engine.start((dt,simStarted)=>{
   }
   for(const d of drones){
     d.mesh.position.copy(d.pos);
-    d.mesh.rotation.y=d.yaw+Math.PI;
+    d.mesh.rotation.order='YXZ'; d.mesh.rotation.y=d.yaw+Math.PI; d.mesh.rotation.x=-(d.tP||0); d.mesh.rotation.z=(d.tR||0);   // 2026-11-21 擬真：機身跟著傾斜（看得出前傾／側傾）
     if(cageSpin&&d.mesh.userData.spin){
       d.mesh.userData.spin.rotation.x+=dt*1.1;
       d.mesh.userData.spin.rotation.z+=dt*.6;
