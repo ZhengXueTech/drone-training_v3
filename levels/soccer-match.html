@@ -21,22 +21,12 @@
   #goal-word{font-size:64px;font-weight:900;letter-spacing:6px;animation:gpop .5s ease-out;}
   #goal-sub{font-size:15px;color:#cfefff;}
   @keyframes gpop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1)}}
-  /* 2026-11-21 展示模式（廣告）：6 台 AI 自己比賽，擺攤投影用 */
-  #demo-ov{position:fixed;inset:0;display:none;pointer-events:none;z-index:34;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;color:#eaf6ff}
-  #demo-ov .t{position:absolute;top:70px;left:0;right:0;text-align:center;font-size:clamp(28px,5vw,64px);font-weight:900;letter-spacing:4px;text-shadow:0 3px 16px #000}
-  #demo-ov .t small{display:block;font-size:.38em;font-weight:700;letter-spacing:2px;color:#9fe8d0;margin-top:6px}
-  #demo-ov .go{position:absolute;bottom:110px;left:0;right:0;text-align:center;font-size:clamp(20px,3vw,36px);font-weight:800;color:#ffd166;text-shadow:0 2px 12px #000;animation:dfade 2.4s ease-in-out infinite}
-  #demo-ov .tip{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);max-width:90vw;padding:10px 22px;border-radius:12px;background:rgba(6,14,30,.78);border:1px solid #2a4a74;font-size:clamp(15px,1.8vw,22px);transition:opacity .6s}
-  @keyframes dfade{0%,100%{opacity:1}50%{opacity:.45}}
-  body.nd-demo #ver,body.nd-demo #ar-panel,body.nd-demo #ar-sticks,body.nd-demo #ar-sub,body.nd-demo #nd-status,body.nd-demo #nd-modes,body.nd-demo #nd-tele,body.nd-demo #nd-att,body.nd-demo #nd-map,body.nd-demo #nd-gpbar,body.nd-demo #nd-deck,body.nd-demo #nd-vj-l,body.nd-demo #nd-vj-r,body.nd-demo #nd-tbtn-pause,body.nd-demo #nd-tbtn-cam,body.nd-demo #nd-toast,body.nd-demo #nd-env{display:none!important}
-  #demo-ov .t{top:72px}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="ver">NEWDRONE SOCCER v1.3</div>
 <div id="goal-ov"><div id="goal-word">GOAL!</div><div id="goal-sub"></div></div>
-<div id="demo-ov"><div class="t">NEWDRONE 無人機足球 3v3<small>AI 對戰展示中</small></div><div class="go">按任一鍵・點一下畫面，開始挑戰！</div><div class="tip" id="demo-tip"></div></div>
 <script type="module">
 import * as THREE from 'three';
 import { Engine } from '../core/engine.js';
@@ -95,16 +85,6 @@ let sfIdx=Math.max(0,SF_OPTS.findIndex(o=>o.code===progress.setting('soccerSFCod
 let SF=SF_OPTS[sfIdx].v, noHold=SF_OPTS[sfIdx].noHold;
 let holdOff=!!progress.setting('soccerHoldOff',false); if(holdOff)noHold=true;   // 2026-10-11 開賽前可單獨關掉定高（不必選專家機速）
 const DIFF_LABEL={easy:'😊 簡單',med:'⚡ 中等',hard:'💀 困難'};
-/* 2026-11-21 展示模式（老師：「新增廣告功能，AI 跑給你看」；開始畫面按鈕＋閒置 60 秒自動播；固定全場視角；
-   疊大標題＋按任一鍵開始、比分時間、規則小提示輪播）。展示中不記成績；按任一鍵／點畫面＝回開始畫面。 */
-let demo=false, demoT=0, idleT=0, tipI=0, tipT=0;
-const DEMO_IDLE=60;
-const DEMO_TIPS=['只有<b>前鋒</b>（尾燈是對方的顏色）穿過對方球門環才算得分',
-  '進球後，全隊要先退回<b>自己的半場</b>才能再進攻',
-  '每節 3 分鐘，<b>3 節 2 勝</b>',
-  '慢慢頂不會撞飛，<b>直線加速衝撞</b>才會把對方撞開',
-  '<b>守門員</b>守住球門，<b>支援</b>負責攔截前鋒',
-  '手把、鍵盤、平板都能玩——<b>按任一鍵開始挑戰！</b>'];
 
 /* ── 相機（足球場 1/5 尺度——CAMERA_SPEC 係數不適用，沿基本版足球專屬參數） ── */
 const CAM_MODES=['tpv','fpv','tac','pilot'];
@@ -114,7 +94,6 @@ let camMode='tpv', pilotSide='right';
 const camTgt=new THREE.Vector3(), _v=new THREE.Vector3();
 function updateCam(){
   const cam=engine.camera, {x,y,z}=player.pos;
-  if(demo){ cam.position.lerp(_v.set(F.HW+2.3,3.3,0),.05); camTgt.lerp(_v.set(0,1.35,0),.05); cam.lookAt(camTgt); return; }   // 展示：固定全場（側邊看台視角）
   const sy=Math.sin(player.yaw), cy=Math.cos(player.yaw);
   if(camMode==='tpv'){
     cam.position.lerp(_v.set(x-sy*1.9,y+.85,z-cy*1.9),.11);
@@ -182,16 +161,15 @@ function triggerGoal(team){
   const ov=document.getElementById('goal-ov'), wd=document.getElementById('goal-word');
   wd.style.color=team==='A'?'#00eeff':'#ff4422';
   wd.style.textShadow=`0 0 40px ${wd.style.color},0 0 80px ${wd.style.color}`;
-  document.getElementById('goal-sub').textContent=demo?(team==='A'?'藍隊得分！':'紅隊得分！'):team==='A'?'🎉 我方（藍隊）得分！':'⚠ 紅隊得分！';
+  document.getElementById('goal-sub').textContent=team==='A'?'🎉 我方（藍隊）得分！':'⚠ 紅隊得分！';
   ov.style.display='flex';
-  if(!demo)sfx.play(team==='A'?'finish':'warn');
-  if(team==='A'&&!demo){hud.toast('進球後全隊退回己方半場！','warn');returnWarned=true;}
+  sfx.play(team==='A'?'finish':'warn');
+  if(team==='A'){hud.toast('進球後全隊退回己方半場！','warn');returnWarned=true;}
   // v1.1：進球不再暫停整場比賽（原 1.7 秒 goal_pause 會讓全部機體凍結、
   // 且與 2 秒的 GOAL 字幕不同步，體感生硬）——改為純字幕，飛行/AI/計時照常進行
   setTimeout(()=>ov.style.display='none',1600);
 }
 function endSet(){
-  if(demo){ demoNextSet(); return; }
   phase='set_end'; sfx.play('warn');
   setLog.push({A:setGoals.A,B:setGoals.B});
   if(setGoals.A>setGoals.B)setsWon.A++; else if(setGoals.B>setGoals.A)setsWon.B++;
@@ -251,34 +229,9 @@ function showIntro(){   // 2026-10-11 統一開始畫面格式（一句重點＋
     ],
     buttons:[
       {id:'b-go',label:'▶ 開賽！',onClick:startMatch,primary:true},
-      {id:'b-demo',label:'📺 展示模式（AI 對戰）',onClick:startDemo},
       {id:'b-back',label:'返回入口',onClick:()=>location.href='../index.html'}]});
-  ui.gpSetFocus(['b-go','b-demo','b-back'],0);
+  ui.gpSetFocus(['b-go','b-back'],0);
 }
-function demoReset(){
-  curSet=1; setTimer=F.SET_DUR; scores={A:0,B:0}; setsWon={A:0,B:0}; setGoals={A:0,B:0};
-  drones.forEach(d=>{d.reset();d.mesh.position.copy(d.pos);});
-}
-function demoNextSet(){
-  if(setGoals.A>setGoals.B)setsWon.A++; else if(setGoals.B>setGoals.A)setsWon.B++;
-  if(setsWon.A>=2||setsWon.B>=2||curSet>=F.N_SETS){ demoReset(); }
-  else{ curSet++; setGoals={A:0,B:0}; setTimer=F.SET_DUR; drones.forEach(d=>{d.reset();d.mesh.position.copy(d.pos);}); }
-  hud.setMission(`📺 展示　第 ${curSet} 節`);
-}
-function startDemo(){
-  ui.closeModal(); demo=true; demoT=0; tipI=0; tipT=0;
-  player.isPlayer=false;                       // 前鋒也交給 AI
-  demoReset(); engine.simStarted=true; phase='playing';
-  document.body.classList.add('nd-demo');
-  document.getElementById('demo-ov').style.display='block';
-  document.getElementById('demo-tip').innerHTML=DEMO_TIPS[0];
-  hud.setMission('📺 展示　第 1 節');
-}
-function stopDemo(){ location.reload(); }       // 回開始畫面（最乾淨）
-const anyGpInput=()=>{ try{ return [...(navigator.getGamepads?.()||[])].some(g=>g&&(g.buttons.some(b=>b.pressed)||g.axes.some(v=>Math.abs(v)>0.5))); }catch{ return false; } };
-addEventListener('keydown',()=>{ idleT=0; if(demo&&demoT>1)stopDemo(); });
-addEventListener('pointerdown',()=>{ idleT=0; if(demo&&demoT>1)stopDemo(); });
-addEventListener('pointermove',()=>{ idleT=0; });
 function startMatch(){
   ui.closeModal(); sfx.play('click');
   engine.simStarted=true; phase='playing';
@@ -332,17 +285,9 @@ engine.start((dt,simStarted)=>{
     crouch=p.btn('crouch');
     if(simStarted&&!ui.modalOpen){ if(camE)cycleCam(); if(pilotE)cyclePilot(); }
   }
-  // 展示模式：開始畫面閒置 60 秒自動播；展示中按任何鍵（手把也算）回開始畫面
-  if(demo){ demoT+=dt; if(demoT>1&&anyGpInput())stopDemo();
-    tipT+=dt; if(tipT>6){ tipT=0; tipI=(tipI+1)%DEMO_TIPS.length; const el=document.getElementById('demo-tip'); el.style.opacity=0;
-      setTimeout(()=>{ el.innerHTML=DEMO_TIPS[tipI]; el.style.opacity=1; },600); } }
-  else if(phase==='intro'&&!engine.simStarted){ const now=performance.now(); idleT+=Math.min(0.5,(now-(window._idleLast||now))/1000); window._idleLast=now; if(anyGpInput())idleT=0; if(idleT>DEMO_IDLE&&!document.hidden)startDemo(); }
   if(simStarted&&phase==='playing'){
-    if(demo) drones.forEach(d=>updateSoccerAI(d,dt,{drones,player,SF:1,diff:'hard'}));
-    else{
     player.step(dt,p,SF,noHold,SOCCER_FEEL[SF_OPTS[sfIdx].code]);
     drones.slice(1).forEach(d=>updateSoccerAI(d,dt,{drones,player,SF,diff}));
-    }
     // FAI：回到己方半場解除 mustReturn
     drones.forEach(d=>{
       if(!d.mustReturn)return;
@@ -367,7 +312,7 @@ engine.start((dt,simStarted)=>{
   }
   goals.forEach((g,i)=>{g.mesh.rotation.z+=dt*(i?.25:.2);
     g.light.intensity=0.3;   /* 2026-11-21：球門燈不再呼吸閃爍（看久會暈） */});
-  player.mesh.visible=demo||(camMode!=='fpv');
+  player.mesh.visible=(camMode!=='fpv');
   updateCam();
   hud.setTelemetry(player.pos.y,player.vel.length());
   hud.setProgress(`藍 ${setGoals.A}:${setGoals.B} 紅${player.mustReturn?'　⚠ 回防':''}`);
