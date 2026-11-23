@@ -1,6 +1,8 @@
 {
   "note": "公開版：不連任何雲端。老師要用雲端功能（成績、排行榜、考核）請自行設定 gasUrl，見專案說明。",
   "gasUrl": "",
+  "profilesUrl": "https://script.google.com/macros/s/AKfycbymJptHXjzou3XbOSj23aatGLp02eeG4QsrP9R7BcUvVujlgBlHxHnP2szb8it4C6-U/exec",
+  "profilesNote": "profilesUrl＝中心的搖桿設定檔清單（審核通過的搖桿所有人自動套用；精靈上傳會送中心審核）。只有搖桿設定，不含成績。",
   "edition": {
     "credit": "開發：新北市立中正國民中學 何政學教師｜推廣：新北市立中正國中自造教育及科技中心",
     "creditCert": "何政學老師"

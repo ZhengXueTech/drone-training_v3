@@ -34,7 +34,7 @@ let _local=null, _file={}, _cfgCache=new Map(), _draft=null;
    網址來源：瀏覽器裡存的（精靈頁老師功能填的）＞ data/cloud-config.json（跟著資料夾／GitHub 走）。
    抓不到（沒網路、沒設定）就當沒有，不影響其他來源。 */
 const GAS_KEY='nd.settings.gasUrl', CLOUD_CACHE='nd.cache.cloudProfiles';
-let _cloud={}, _gasUrl='', _cloudErr='', _cloudState='off';     // off｜loading｜ok｜error
+let _cloud={}, _gasUrl='', _cloudErr='', _cloudState='off', _src='off';   // _src：local（這台瀏覽器填的）｜config｜center（公開版預設的中心搖桿清單）｜off     // off｜loading｜ok｜error
 try{ const c=JSON.parse(localStorage.getItem(CLOUD_CACHE)); if(c&&typeof c==='object')_cloud=c; }catch{}
 const _okUrl=u=>typeof u==='string'&&/^https:\/\/script\.google(usercontent)?\.com\//.test(u)||/^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(u||'');
 async function _fetchJson(url,opt={}){
@@ -49,18 +49,23 @@ async function _fetchJson(url,opt={}){
   finally{ clearTimeout(t); }
 }
 export function gasUrl(){ return _gasUrl; }
+export function cloudSource(){ return _src; }
 export function cloudState(){ return _cloudState; }
 export function cloudError(){ return _cloudErr; }   // 連得上但試算表那邊回報的問題（例如還沒執行 setup）
 export function setGasUrl(u){
   u=(u||'').trim();
   try{ if(u)localStorage.setItem(GAS_KEY,JSON.stringify(u)); else localStorage.removeItem(GAS_KEY); }catch{}
-  _gasUrl=_okUrl(u)?u:'';
+  _gasUrl=_okUrl(u)?u:''; _src=_gasUrl?'local':'off';
 }
 /* 啟動時呼叫：決定網址 → 抓「通過」清單 → 存一份快取（下次沒網路時先用） */
 export async function fetchCloudProfiles(configUrl){
   let u=''; try{ u=JSON.parse(localStorage.getItem(GAS_KEY))||''; }catch{}
-  if(!u&&configUrl){ try{ const r=await fetch(configUrl,{cache:'no-store'}); if(r.ok)u=(await r.json()).gasUrl||''; }catch{} }
-  _gasUrl=_okUrl(u)?u:'';
+  _src=u?'local':'off';
+  if(!u&&configUrl){ try{ const r=await fetch(configUrl,{cache:'no-store'}); if(r.ok){ const c=await r.json();
+    // 2026-11-23：搖桿清單跟成績分開。公開版 cloud-config.json 的 gasUrl 留空（成績不上雲），
+    // profilesUrl 填中心網址＝所有人都抓得到中心審核通過的搖桿、也能從精靈上傳送審（只有搖桿設定，碰不到成績）
+    if(c.gasUrl){ u=c.gasUrl; _src='config'; } else if(c.profilesUrl){ u=c.profilesUrl; _src='center'; } } }catch{} }
+  _gasUrl=_okUrl(u)?u:''; if(!_gasUrl)_src='off';
   if(!_gasUrl){ _cloudState='off'; return 0; }
   _cloudState='loading'; _cloudErr='';
   try{

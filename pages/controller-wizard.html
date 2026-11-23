@@ -130,7 +130,7 @@ details.adv .box{background:rgba(11,27,51,.6);}
       <span id="io-msg" class="sub"></span>
     </div>
     <h2 style="margin-top:18px">☁ 雲端（學生上傳、老師審核、全班自動套用）</h2>
-    <p class="sub">電腦教室有還原卡時，學生自己設的搖桿重開機就不見；接上雲端後，學生可以上傳，你在 Google 試算表把狀態改成「通過」，每台電腦開模擬器時就會自動抓回來。安裝步驟在模擬器資料夾的 <b>tools/gas/安裝說明.md</b>（約 10 分鐘，做一次）。</p>
+    <p class="sub">電腦教室有還原卡時，學生自己設的搖桿重開機就不見；接上雲端後，學生可以上傳，你在 Google 試算表把狀態改成「通過」，每台電腦開模擬器時就會自動抓回來。安裝步驟在模擬器資料夾的 <b>tools/gas/安裝說明.md</b>（約 10 分鐘，做一次）。<br><b>公開版已經預設連到中心的搖桿清單</b>（中正國中科技中心審核），下面留空就好；只有要改用自己學校的試算表才需要填。</p>
     <div class="row">
       <input type="text" id="gas-url" placeholder="貼上網頁應用程式網址 https://script.google.com/macros/s/…/exec" style="width:520px">
       <button id="btn-gas">儲存並測試連線</button>
@@ -144,7 +144,7 @@ details.adv .box{background:rgba(11,27,51,.6);}
 import { InputManager, gpCfgRead, DEF_BTN } from '../core/input.js';
 import { buildDiagram, shapeFor, SHAPES } from '../core/controller-diagram.js';
 import { createStickGuide } from '../core/stick-guide.js';   // 2026-10-07 示範動作＋搖桿範圍
-import { cloudError, listCloudProfiles, uploadProfile, pingCloud, setGasUrl, gasUrl, cloudState, fetchCloudProfiles, saveProfile, deleteProfile, listLocalProfiles, listFileProfiles, exportProfiles, importProfiles, envInfo, AXIS_NAMES, profileFor, profileSource, setDraftProfile }
+import { cloudSource, cloudError, listCloudProfiles, uploadProfile, pingCloud, setGasUrl, gasUrl, cloudState, fetchCloudProfiles, saveProfile, deleteProfile, listLocalProfiles, listFileProfiles, exportProfiles, importProfiles, envInfo, AXIS_NAMES, profileFor, profileSource, setDraftProfile }
   from '../core/controller-profiles.js';
 
 const $=id=>document.getElementById(id);
@@ -397,7 +397,9 @@ function render0(){
       <div class="row"><input type="text" id="nm" maxlength="40" placeholder="例如：Radiomaster Pocket（USB 搖桿模式）">
         <button class="primary" id="b-save">✅ 方向都對，儲存</button><button class="danger" id="b-redo">方向不對，重做</button></div>
       <p class="sub" id="save-msg"></p>
-      <div class="row" id="up-row" style="display:none"><button id="b-upload">☁ 上傳給老師審核（通過後全班都能用）</button><span class="sub" id="up-msg"></span></div>`;
+      <div class="row" id="up-row" style="display:none"><input type="text" id="up-who" maxlength="30" placeholder="學校／老師（例：中正國中 何老師）" style="width:260px">
+        <button id="b-upload">☁ 上傳給老師審核（通過後全班都能用）</button><span class="sub" id="up-msg"></span></div>
+      <p class="sub" id="up-note" style="display:none">只會送出搖桿的按鍵與軸設定、搖桿型號和你填的學校／老師，不會送出學生姓名或成績。</p>`;
     guide8=createStickGuide($('sg8'),{pct:true}); guide8.setDemo(null);
     $('b-sg-clear').onclick=()=>guide8.clearTrace();
     const isRc=(st.profile.shape||'')==='rc'; $('mv-row').style.display=isRc?'flex':'none'; if(!isRc)moveMode=false;
@@ -443,10 +445,16 @@ function render0(){
       setDraftProfile(null);
       viewInput=newViewer();
       $('save-msg').innerHTML='<span class="ok">✓ 已儲存，現在所有關卡都會用這份設定。</span>'+(gasUrl()?'':'<br>這份設定只存在這台電腦；電腦有還原卡的話重開機會不見（老師設定雲端後就能上傳保存）。'); renderList();
-      if(gasUrl()){ $('up-row').style.display=''; $('b-upload').onclick=async()=>{
+      if(gasUrl()){ $('up-row').style.display=''; $('up-note').style.display='';
+        const center=cloudSource()==='center';
+        if(center)$('b-upload').textContent='☁ 送給中心審核（通過後所有電腦都能用）';
+        try{ $('up-who').value=localStorage.getItem('nd.gp.uploader')||''; }catch{}
+        $('b-upload').onclick=async()=>{
+        const who=$('up-who').value.trim(); try{ localStorage.setItem('nd.gp.uploader',who); }catch{}
         $('b-upload').disabled=true; $('up-msg').textContent='上傳中…';
-        const r=await uploadProfile({...st.profile,status:'pending'});
-        $('up-msg').innerHTML=r.ok?'<span class="ok">✓ 已送出，等老師審核通過後，全班電腦接上同款搖桿就會自動套用。</span>'
+        const r=await uploadProfile({...st.profile,author:who,status:'pending'});
+        $('up-msg').innerHTML=r.ok?(center?'<span class="ok">✓ 已送給中心審核，通過後所有電腦接上同款搖桿就會自動套用（下次開模擬器時）。</span>'
+          :'<span class="ok">✓ 已送出，等老師審核通過後，全班電腦接上同款搖桿就會自動套用。</span>')
           :'<span class="warn">✗ 上傳失敗：'+esc(r.error)+'</span>';
         if(!r.ok)$('b-upload').disabled=false; }; } };
     $('b-redo').onclick=()=>reset();    // 草稿沒寫入，原本的設定原封不動
@@ -492,7 +500,7 @@ function finishDetect(){
   st.profile={id:gp.id,name:niceName(st.gpId),labels:{...st.labels},axes,throttleType:st.throttleType,
     shape:st.shape||shapeFor(gp,{throttleType:st.throttleType}),...(Object.keys(st.layout||{}).length?{layout:{...st.layout}}:{}),...((st.hide||[]).length?{hide:[...st.hide]}:{}),
     buttons,axBtns:st.axBtns.slice(),deadzone:+Math.max(0.08,Math.min(0.2,st.noise*3+0.03)).toFixed(3),expo:0,
-    author:(()=>{try{return JSON.parse(localStorage.getItem('nd.student'))?.name||'';}catch{return '';}})(),
+    author:'',   // 2026-11-23：不再自動帶學生姓名（會送到中心＝個資）；上傳時由「學校／老師」欄填
     created:new Date().toISOString().slice(0,10),browser:env.browser,os:env.os,status:'local'};
   // 先當「草稿」試用（只在記憶體），下一步看得到套用後的結果；按下「儲存」才真的寫入，
   // 所以重跑精靈做到一半放棄或按「重做」，原本的設定都不會被動到。
@@ -654,15 +662,19 @@ function tickDiagram(dt){
 /* ── 雲端 ── */
 function cloudMsg(){
   const st0=cloudState(), n=listCloudProfiles().length;
-  $('gas-url').value=gasUrl();
-  $('gas-msg').innerHTML=!gasUrl()?'目前沒有設定雲端。':st0==='ok'?`<span class="ok">✓ 已連上，雲端有 ${n} 份審核通過的設定。</span>`
+  const center=cloudSource()==='center';
+  $('gas-url').value=center?'':gasUrl();
+  $('gas-msg').innerHTML=!gasUrl()?'目前沒有設定雲端。'
+    :center&&st0==='ok'?`<span class="ok">✓ 使用中心的搖桿清單：有 ${n} 份審核通過的設定，接上同款搖桿會自動套用。</span>（只有搖桿設定，不含成績；要用自己的試算表再填上面）`
+    :st0==='ok'?`<span class="ok">✓ 已連上，雲端有 ${n} 份審核通過的設定。</span>`
     :st0==='loading'?'連線中…'
     :`<span class="warn">✗ 讀取清單失敗：${esc(cloudError()||'原因不明')}。${/setup/.test(cloudError())?'請回 Apps Script 編輯器，上方函式選 setup 按「▶ 執行」，再回來按一次測試。'
         :/Failed to fetch|NetworkError/i.test(cloudError())?'（瀏覽器連不到 Google：檢查網路，或學校網路是否擋了 script.google.com）':''}${n?'先用上次抓到的 '+n+' 份。':''}</span>`;
 }
 $('btn-gas').onclick=async()=>{
   setGasUrl($('gas-url').value);
-  if(!$('gas-url').value.trim()){ await fetchCloudProfiles(null); cloudMsg(); renderList(); return; }
+  const CFG=new URL('../data/cloud-config.json',location.href);   // 清空＝回到預設（公開版＝中心的搖桿清單）
+  if(!$('gas-url').value.trim()){ await fetchCloudProfiles(CFG); cloudMsg(); renderList(); return; }
   $('gas-msg').textContent='測試連線中…';
   const r=await pingCloud();
   if(!r.ok){ $('gas-msg').innerHTML='<span class="warn">✗ '+esc(r.error)+'</span>'; return; }
