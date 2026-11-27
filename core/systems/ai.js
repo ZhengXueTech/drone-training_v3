@@ -23,7 +23,10 @@ export const AI_DIFF={
   // dbl（2026-11-19 老師選「依難度不同」）：false＝一守門一攔截（守門員貼在球門前不撲出、支援不進球門前 1 m）；
   //   true＝困難才會門前兩台夾擊（守門員可撲出 0.9 m、支援跟到球門口）
   // 2026-11-28 老師：簡單還是太難 → 再降一級（速度 0.7→0.55、守門補位 4→2.8、撲擋 7→5、反應 0.5→0.8 秒、再衝冷卻 1.6→2.2）
-  easy:{spd:0.55, gk:2.8, block:5.0,  react:2.2, align:0.7, look:0.8 ,dbl:false, gm:1/1.728},
+  /* 2026-11-28 老師第二次：「簡單對完全不會的人還是太難，防守太緊」→ 簡單改成「初學者友善」：
+     cover＝守門員只守住 45% 的射門線（偏向門中間，旁邊留空檔）；pounce＝0 不撲出來；
+     lazy＝對方支援不來攔你（待在中場）；其他速度、反應再降。 */
+  easy:{spd:0.45, gk:1.6, block:3.0,  react:2.6, align:0.6, look:1.2 ,dbl:false, gm:1/1.728, cover:0.45, pounce:0, lazy:true},
   med: {spd:0.8,  gk:6.0, block:9.0,  react:1.3, align:0.85,look:0.3 ,dbl:false, gm:1.2/1.728},
   hard:{spd:0.9,  gk:9.0, block:12.0, react:1.05,align:0.95,look:0.15,dbl:true, gm:1.44/1.728},
   // gm（2026-11-28）＝AI 開幾檔（同玩家四檔倍率）：簡單一檔、中等二檔、困難三檔；隊友三檔
@@ -245,7 +248,8 @@ export function updateSoccerAI(d,dt,ctx){
       if(d.team===TB){
         // 敵方支援：預判玩家 0.35 秒後的位置，擋在玩家和球門之間（v3）
         if(player.mustReturn){ giveWay(d,player,.5,dt,SF); break; }
-        if(player.pos.z>0){
+        if(D.lazy) _tgt.set(d.i%2===0?-.6:.6,1.3,.6);   // 簡單：不來攔你，留在中場
+        else if(player.pos.z>0){
           pred(player,0.35);
           // 簡單／中等：支援只在球門前 1 m 以外攔截，你衝進去它就停在外圍（守門交給守門員，不兩台夾）
           _tgt.set(_p.x*.8,clamp(_p.y,F.BR+.1,F.FH-F.BR-.1),clamp(_p.z+.35,0,D.dbl?F.GZ-.3:F.GZ-1.0));
@@ -281,7 +285,7 @@ export function updateSoccerAI(d,dt,ctx){
         const distP=d.pos.distanceTo(player.pos);
         const approaching=player.pos.z>F.GZ*.3;
         seen(d,player,dt,D.look,0.3);                         // v3：預判玩家 0.3 秒後的位置，但有反應時間（D.look）
-        if(distP<(D.look>0.4?0.55:D.look>0.2?0.45:0.35)&&approaching){   // v3：越難越不會衝出去亂撲，守住射門線
+        if(distP<(D.pounce??(D.look>0.4?0.55:D.look>0.2?0.45:0.35))&&approaching){   // v3：越難越不會衝出去亂撲，守住射門線
           _tgt.set(clamp(_p.x,-F.HW+F.BR*2,F.HW-F.BR*2),
                    clamp(_p.y,F.BR+.1,F.FH-F.BR-.1),
                    clamp(_p.z,D.dbl?F.GZ-.9:F.GZ-.55,F.GZ-.3));   // 簡單／中等：最多離開球門 0.55 m，不撲出來；最近 0.3 m（不伸進環裡＝犯規）
@@ -289,8 +293,9 @@ export function updateSoccerAI(d,dt,ctx){
         }else if(approaching){
           // 站在「玩家 → 球門中心」連線上、球門前 0.5 m（封住射門角度）
           const gzD=F.GZ-.5, t=clamp((gzD-_p.z)/Math.max(.01,F.GZ-_p.z),0,1);
-          _tgt.set(clamp(_p.x+(0-_p.x)*t,-F.HW+F.BR*2,F.HW-F.BR*2),
-                   clamp(_p.y+(F.GY-_p.y)*t,F.BR+.1,F.FH-F.BR-.1),gzD);
+          const cv=D.cover??1;   // 簡單：只守一部分射門線（偏門中間），旁邊留空檔
+          _tgt.set(clamp((_p.x+(0-_p.x)*t)*cv,-F.HW+F.BR*2,F.HW-F.BR*2),
+                   clamp(F.GY+(_p.y+(F.GY-_p.y)*t-F.GY)*cv,F.BR+.1,F.FH-F.BR-.1),gzD);
           moveTo(d,_tgt,dt,D.gk*SF);
         }else{
           _tgt.set(0,F.GY,F.GZ-.5);
