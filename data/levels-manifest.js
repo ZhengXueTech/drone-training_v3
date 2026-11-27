@@ -140,6 +140,14 @@ export const LEVELS=[
     doneField:'completed', unlockAfter:null,
     emoji:'⚽', desc:'FAI 規則（striker 得分・進球退回半場）、AI 隊友對手、3 節賽制。',
     hint:'C 視角・F 保護籠旋轉・可調機速與 AI 難度' },
+  { id:'soccer-aim', title:'足球穿環特訓', part:'C', file:'levels/soccer-aim.html',
+    // 2026-11-28 老師：對準撞進球門是初學者的難題 → 單機分階段練穿環（定點／偏位／速度／移動中），準星＋落點分布
+    modes:['solo'], maxSeats:1,
+    hud:{battery:false,wind:false,minimap:true,telemetry:true,gpbar:true},
+    metrics:[{key:'stage',label:'階段'},{key:'hits',label:'命中'},{key:'tries',label:'次數'},{key:'avgCm',label:'平均離中心(cm)'}],
+    doneField:'completed', unlockAfter:null,
+    emoji:'🎯', desc:'單機練穿球門環：定點、偏位、速度、移動中四個階段；準星預測落點、落點分布看自己偏哪邊。',
+    hint:'C 視角・G 換檔・R 這次重來・T 回放' },
   { id:'soccer-pvp', title:'無人機足球 PVP（1v1～3v3）', part:'C',
     file:'pages/pairing.html?activity=soccer-pvp', playFile:'levels/pvp.html',
     // Phase 4：pairing 升級為通用席位大廳，取代基本版 soccer-match-2p/4p/6p

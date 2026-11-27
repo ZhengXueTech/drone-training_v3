@@ -423,7 +423,7 @@ function startMatch(){
   ui.closeModal(); sfx.play('click');
   applyRole();
   engine.simStarted=true;
-  gearMax=player.gear; player.power=powerOn; drones.forEach(d=>d.hitFx=hitFx);   // 2026-11-28 AI 也會被撞翻、滾地、卡網 powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
+  gearMax=player.gear; player.power=powerOn; drones.forEach(d=>d.hitFx=hitFx); /* 2026-11-28 AI 也會被撞翻、滾地、卡網 */ powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
   hud.setMission('🏆 第 1 局');
   startLaunch();
 }

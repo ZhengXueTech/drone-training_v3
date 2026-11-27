@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<!-- newdrone 無人機飛行模擬器 © 2026 何政學（新北市立中正國民中學）｜授權 CC BY-NC-SA 4.0（姓名標示─非商業性─相同方式分享），見 LICENSE.md；請保留本聲明 -->
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27><text y=%2713%27 font-size=%2713%27>🎯</text></svg>">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>足球穿環特訓｜newdrone</title>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three-0.184.0/three.module.min.js" } }
+</script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#040810;font-family:'Share Tech Mono','Consolas',monospace;}
+  #c{width:100%;height:100%;display:block;touch-action:none;}
+  body.nd-portrait #c{height:60%;}
+  #ver{position:fixed;left:10px;bottom:4px;font-size:10px;color:#3b5c7a;z-index:21;}
+  /* 落點分布圖（從你這一側看球門：畫面右邊＝場地 -X） */
+  #aim-panel{position:fixed;right:10px;top:96px;z-index:22;width:184px;padding:8px 8px 10px;border-radius:10px;
+    background:rgba(6,14,24,.86);border:1px solid #2a4a74;color:#eaf6ff;font:13px/1.45 "Noto Sans TC","Microsoft JhengHei",sans-serif;display:none}
+  #aim-panel .h{font-weight:700;margin-bottom:4px}
+  #aim-panel canvas{display:block;margin:0 auto 4px;background:#0b1626;border-radius:8px}
+  #aim-panel .s{font-size:12px;color:#cfe3f7}
+  #res{position:fixed;left:50%;top:34%;transform:translate(-50%,-50%);z-index:30;pointer-events:none;display:none;
+    padding:10px 26px;border-radius:12px;background:rgba(6,14,24,.86);border:2px solid #fff;color:#fff;text-align:center;
+    font:700 26px/1.3 "Noto Sans TC","Microsoft JhengHei",sans-serif}
+  #res small{display:block;font-size:15px;font-weight:500;color:#cfe3f7}
+  @media (max-width:700px){ #aim-panel{top:auto;bottom:150px;width:150px} #aim-panel canvas{width:130px;height:130px} }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ver">NEWDRONE SOCCER-AIM v1.0</div>
+<div id="aim-panel"><div class="h">🎯 落點分布</div><canvas id="aim-cv" width="168" height="168"></canvas><div class="s" id="aim-st"></div></div>
+<div id="res"></div>
+<script type="module">
+/* ============================================================
+   足球穿環特訓（2026-11-28）
+   老師：「對準撞進球門對很多初學者就是難題，或許可以針對這個設計小遊戲。」
+   跟足球比賽同一套物理（機型、定高、四檔）、同一個場地與球門環，只有你一台機，分階段練「對準＋穿環」：
+     1 定點穿環：已對準，往前推穿過去（判斷距離）
+     2 偏位穿環：從九宮格不同位置出發，先對準高度和左右再衝
+     3 速度穿環：穿過時速度要夠快，不在門前減速
+     4 移動中穿環：60 秒內從隨機位置出發，穿越越多越好
+   幫助看見自己哪裡偏：預測落點準星（綠＝會進、黃＝擦邊、紅＝會撞框）、每次落點與偏差公分、落點分布圖與平均偏向、回放（T）。
+   之後再加：5 有守門員、6 撞開防守（見專案文件 newdrone-戰術板構想）。
+   ============================================================ */
+import * as THREE from 'three';
+import { Engine } from '../core/engine.js';
+import { InputManager } from '../core/input.js';
+import { HUD, DENSITY_LABELS } from '../core/hud.js';
+import { UI } from '../core/ui.js';
+import { buildDroneStyle } from '../core/drone-styles.js';
+import '../core/soccer-arena.js';
+import { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField, checkGoal, strictR, SOCCER_FEEL } from '../core/systems/soccer.js';
+import { Replay } from '../core/replay.js';
+import { sfx } from '../core/audio.js';
+import { progress } from '../data/progress.js';
+import { getLevel } from '../data/levels-manifest.js';
+
+const LEVEL=getLevel('soccer-aim');
+progress.migrateLegacy();
+const F=FIELD;
+
+/* ── 引擎 ── */
+const engine=new Engine(document.getElementById('c'),{lowQuality:innerWidth<600});
+engine.camera.fov=68; engine.camera.near=0.04; engine.camera.updateProjectionMatrix();
+const input=new InputManager();
+const hud=new HUD(LEVEL.hud);
+const ui=new UI(input);
+const goals=buildSoccerField(engine.scene);
+const player=new SoccerDrone(0);
+player.mesh=buildDroneStyle('soccer-cage',{tc:SOCCER_SEATS[0].tc,sc:SOCCER_SEATS[0].sc,isPlayer:true});
+engine.scene.add(player.mesh);
+player.gears=4;
+const replay=new Replay({engine,input,drones:[player],field:F,teamA:TA,focus:player,label:()=>'你'});
+
+/* ── 設定 ── */
+const SF_OPTS=[
+  {code:'slow',label:'入門有刷（慢）',v:0.55,vmin:1.0},
+  {code:'std', label:'有刷',          v:1.0, vmin:1.8},
+  {code:'race',label:'無刷',          v:1.8, vmin:2.5},
+];
+let sfIdx=Math.max(0,SF_OPTS.findIndex(o=>o.code===progress.setting('soccerSFCode','std')));
+if(progress.setting('soccerSFCode','std')==='expert')sfIdx=2;
+let holdOff=!!progress.setting('soccerHoldOff',false);
+let strict=!!progress.setting('aimStrict',false);
+let assistMode=progress.setting('aimAssist','auto');   // auto＝依階段｜on｜off
+let unlocked=Math.max(1,+progress.setting('aimUnlock',1)||1);
+let stageN=Math.min(unlocked,Math.max(1,+progress.setting('aimStage',1)||1));
+const feel=()=>SOCCER_FEEL[SF_OPTS[sfIdx].code];
+const lim=()=>strict?strictR():F.GI;
+
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const shuffle=a=>{ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+const STAGES=[
+  {n:1,name:'定點穿環',goal:'已經對準了：往前推，穿過紅色球門環',tries:8,pass:5,assist:true,
+   starts:()=>Array(8).fill(0).map(()=>[0,F.GY,F.GZ-1.5])},
+  {n:2,name:'偏位穿環',goal:'起點在環的左右上下：<b>先對準高度和左右，再往前衝</b>',tries:9,pass:5,assist:true,
+   starts:()=>{ const ys=[F.GY-0.7,F.GY,Math.min(F.FH-0.3,F.GY+0.3)], xs=[-0.7,0,0.7];
+     return shuffle(xs.flatMap(x=>ys.map(y=>[x,y,F.GZ-1.8]))); }},
+  {n:3,name:'速度穿環',goal:'從遠一點出發，<b>穿過時速度要夠快</b>（不要在門前減速）',tries:8,pass:4,assist:true,speed:true,
+   starts:()=>Array(8).fill(0).map(()=>[rnd(-0.4,0.4),F.GY+rnd(-0.35,0.25),F.GZ-3.4])},
+  {n:4,name:'移動中穿環',goal:'<b>60 秒</b>內從場上隨機位置出發，穿越越多越好（準星預設不給）',time:60,assist:false,
+   starts:null},
+];
+const stage=()=>STAGES[stageN-1];
+const assistOn=()=>assistMode==='on'||(assistMode==='auto'&&stage().assist);
+
+/* ── 準星（預測落點）＋落點標記 ── */
+const aimGrp=new THREE.Group(); engine.scene.add(aimGrp);
+const aimRing=new THREE.Mesh(new THREE.TorusGeometry(0.07,0.012,8,32),new THREE.MeshBasicMaterial({color:0x4ade80,transparent:true,opacity:.95,depthTest:false}));
+aimRing.renderOrder=10; aimGrp.add(aimRing);
+const aimLineGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+const aimLine=new THREE.Line(aimLineGeo,new THREE.LineDashedMaterial({color:0x4ade80,dashSize:.08,gapSize:.06,transparent:true,opacity:.7}));
+aimGrp.add(aimLine);
+const dotGrp=new THREE.Group(); engine.scene.add(dotGrp);
+const COL={ok:0x4ade80,edge:0xfbbf24,bad:0xf87171};
+function predict(){
+  const dz=F.GZ-player.pos.z; if(dz<0.04)return null;
+  const v=player.vel;
+  if(v.z>0.35){ const t=dz/v.z; if(t>3)return null; return {x:player.pos.x+v.x*t,y:player.pos.y+v.y*t*0.5}; }
+  const c=Math.cos(player.yaw); if(c<0.25)return null;
+  return {x:player.pos.x+Math.tan(player.yaw)*dz,y:player.pos.y};
+}
+function colOf(r){ return r<=lim()?COL.ok:r<=F.GR?COL.edge:COL.bad; }
+function updateAim(){
+  const on=assistOn()&&phase==='fly';
+  const p=on?predict():null;
+  aimGrp.visible=!!p; if(!p)return;
+  const r=Math.hypot(p.x,p.y-F.GY), c=colOf(r);
+  aimRing.material.color.setHex(c); aimLine.material.color.setHex(c);
+  aimRing.position.set(p.x,p.y,F.GZ-0.01);
+  const a=aimLineGeo.attributes.position; a.setXYZ(0,player.pos.x,player.pos.y,player.pos.z); a.setXYZ(1,p.x,p.y,F.GZ); a.needsUpdate=true;
+  aimLine.computeLineDistances();
+}
+function addDot(x,y,c){ const m=new THREE.Mesh(new THREE.SphereGeometry(0.028,10,8),new THREE.MeshBasicMaterial({color:c,depthTest:false})); m.renderOrder=11; m.position.set(x,y,F.GZ+0.005); dotGrp.add(m); }
+
+/* ── 落點分布圖（2D） ── */
+const cv=document.getElementById('aim-cv'), g2=cv.getContext('2d');
+function drawPanel(){
+  const W=cv.width, S=W/2/(F.GO+0.25), cx=W/2, cy=W/2;
+  g2.clearRect(0,0,W,W);
+  g2.strokeStyle='#ef4444'; g2.lineWidth=(F.GO-F.GI)*S; g2.beginPath(); g2.arc(cx,cy,(F.GI+F.GO)/2*S,0,Math.PI*2); g2.stroke();
+  g2.strokeStyle='rgba(74,222,128,.8)'; g2.lineWidth=1; g2.setLineDash([4,3]); g2.beginPath(); g2.arc(cx,cy,lim()*S,0,Math.PI*2); g2.stroke(); g2.setLineDash([]);
+  g2.strokeStyle='rgba(255,255,255,.25)'; g2.beginPath(); g2.moveTo(cx-W*.45,cy); g2.lineTo(cx+W*.45,cy); g2.moveTo(cx,cy-W*.45); g2.lineTo(cx,cy+W*.45); g2.stroke();
+  for(const t of log){ if(t.x==null)continue;
+    g2.fillStyle='#'+t.c.toString(16).padStart(6,'0'); g2.beginPath(); g2.arc(cx-t.x*S,cy-(t.y-F.GY)*S,4,0,Math.PI*2); g2.fill(); }
+  const st=stats();
+  document.getElementById('aim-st').innerHTML=st.n?`命中 <b>${st.hits}</b>／${st.n}　平均離中心 <b>${st.avg}</b> cm<br>${st.bias||'沒有明顯偏向 👍'}`:'穿過或撞到環之後，落點會出現在這裡';
+}
+function stats(){
+  const xs=log.filter(t=>t.x!=null), n=log.length, hits=log.filter(t=>t.ok).length;
+  if(!xs.length)return {n,hits,avg:'—',bias:''};
+  const mx=xs.reduce((s,t)=>s+t.x,0)/xs.length, my=xs.reduce((s,t)=>s+(t.y-F.GY),0)/xs.length;
+  const avg=Math.round(xs.reduce((s,t)=>s+Math.hypot(t.x,t.y-F.GY),0)/xs.length*100);
+  const b=[]; if(Math.abs(mx)>0.04)b.push((mx>0?'偏左 ':'偏右 ')+Math.round(Math.abs(mx)*100)+' cm'); if(Math.abs(my)>0.04)b.push((my>0?'偏高 ':'偏低 ')+Math.round(Math.abs(my)*100)+' cm');
+  return {n,hits,avg,bias:b.length?'平均 '+b.join('、'):'' ,mx,my};
+}
+
+/* ── 回合狀態 ── */
+let phase='intro';      // intro|fly|show|done
+let starts=[], tryI=0, tryT=0, showT=0, timeLeft=0, log=[], gearMax=1;
+let camMode='tpv'; const CAM_MODES=['tpv','fpv','tac','pilot'], CAM_LABELS={tpv:'追蹤',fpv:'FPV',tac:'俯視',pilot:'飛手'};
+const GEAR_NAME=['一','二','三','四'];
+const camTgt=new THREE.Vector3(), _v=new THREE.Vector3();
+function updateCam(snap){
+  const cam=engine.camera, {x,y,z}=player.pos, sy=Math.sin(player.yaw), cy=Math.cos(player.yaw), k=snap?1:.11;
+  if(camMode==='tpv'){ cam.position.lerp(_v.set(x-sy*1.9,y+.85,z-cy*1.9),k); camTgt.lerp(_v.set(x,y+.08,z),k); cam.lookAt(camTgt); }
+  else if(camMode==='fpv'){ cam.position.set(x+sy*.08,y+.015,z+cy*.08); cam.lookAt(x+sy*5,y,z+cy*5); }
+  else if(camMode==='tac'){ cam.position.lerp(_v.set(0,6,.01),snap?1:.05); cam.lookAt(0,0,0); }
+  else { cam.position.lerp(_v.set(.55,1.65,-F.HL-1.3),snap?1:.08); cam.lookAt(0,1.5,0); }
+}
+function cycleCam(){ camMode=CAM_MODES[(CAM_MODES.indexOf(camMode)+1)%CAM_MODES.length]; hud.toast('視角：'+CAM_LABELS[camMode],'ok'); syncModes(); }
+function syncModes(){ hud.setModes(`穿環特訓･${GEAR_NAME[player.gear-1]}檔`,CAM_LABELS[camMode]); }
+function toggleGear(){ player.gear=player.gear%4+1; gearMax=Math.max(gearMax,player.gear); hud.toast('檔位：'+GEAR_NAME[player.gear-1]+'檔','ok'); syncModes(); }
+
+function place(s){
+  player.reset(); player.pos.set(s[0],s[1],s[2]); player.prevZ=player.pos.z; player.vel.set(0,0,0);
+  player.yaw=s[3]||0; player._xp=null; player.holdY=null;
+  updateCam(true);
+}
+function randStart(){
+  for(let k=0;k<20;k++){ const x=rnd(-F.HW+0.3,F.HW-0.3), z=rnd(-F.HL+0.4,F.GZ-1.2), y=rnd(0.8,F.FH-0.4);
+    if(Math.hypot(x,z-F.GZ)>1.2) return [x,y,z,rnd(-0.6,0.6)]; }
+  return [0,1.5,0,0];
+}
+function startStage(){
+  ui.closeModal(); sfx.play('click');
+  progress.setSetting('aimStage',stageN);
+  log=[]; tryI=0; dotGrp.clear(); gearMax=player.gear;
+  starts=stage().starts?stage().starts():[];
+  timeLeft=stage().time||0;
+  document.getElementById('aim-panel').style.display='block';
+  hud.setMission(`🎯 第 ${stageN} 階段：${stage().name}`);
+  hud.toast(stage().goal.replace(/<[^>]+>/g,''),'ok');
+  engine.simStarted=true; nextTry(true);
+  drawPanel(); syncModes();
+}
+function nextTry(first){
+  const st=stage();
+  if(!st.time&&tryI>=st.tries){ finishStage(); return; }
+  place(st.time?randStart():starts[tryI]);
+  tryT=0; phase='fly';
+  if(!first)replay.mark('第 '+(tryI+1)+' 次');
+}
+function judge(kind,info){
+  // kind: cross（穿過環面）｜timeout
+  const st=stage(); let ok=false, msg='', c=COL.bad, x=null, y=null, spd=+player.vel.length().toFixed(1);
+  if(kind==='cross'){
+    x=info.x; y=info.y; const r=Math.hypot(x,y-F.GY), cm=Math.round(r*100);
+    ok=!!info.goal; c=colOf(r);
+    if(ok&&st.speed&&spd<SF_OPTS[sfIdx].vmin){ ok=false; c=COL.edge; msg=`穿過了，但太慢：${spd} m/s（要 ${SF_OPTS[sfIdx].vmin} 以上）`; }
+    else if(info.bounce) msg=`撞到環被彈回來：離中心 ${cm} cm（要在 ${Math.round(lim()*100)} cm 內）`;
+    else msg=ok?`✅ 進了！離中心 ${cm} cm・${spd} m/s`:r<=F.GO+F.BR?`擦框沒進：離中心 ${cm} cm（要在 ${Math.round(lim()*100)} cm 內）`:`沒對準：從環外 ${cm} cm 的地方過去`;
+  }else msg='⏱ 時間到，沒有穿過環';
+  log.push({ok,x,y,c,spd}); if(x!=null)addDot(x,y,c);
+  replay.mark(ok?'✅ 進':'✗ '+(kind==='timeout'?'時間到':'沒進'));
+  sfx.play(ok?'finish':'warn');
+  const el=document.getElementById('res'); el.style.display='block';
+  el.style.borderColor='#'+c.toString(16).padStart(6,'0');
+  el.innerHTML=(ok?'命中！':'再試一次')+`<small>${msg}${ok?'':'　（按 T 可回放）'}</small>`;
+  tryI++; phase='show'; showT=st.time?0.7:1.3;
+  drawPanel();
+}
+function finishStage(){
+  phase='done'; engine.simStarted=false; document.getElementById('res').style.display='none';
+  const st=stage(), s=stats();
+  let stars=0;
+  if(st.time){ stars=s.hits>=10?3:s.hits>=6?2:s.hits>=3?1:0; }
+  else { stars=s.hits>=st.tries-1?3:s.hits>=st.pass+1?2:s.hits>=st.pass?1:0; }
+  const passed=stars>0;
+  if(passed&&stageN<STAGES.length&&unlocked<stageN+1){ unlocked=stageN+1; progress.setSetting('aimUnlock',unlocked); }
+  progress.record('soccer-aim',{completed:passed,score:s.hits,stars,
+    metrics:{stage:stageN,hits:s.hits,tries:s.n,avgCm:s.avg,biasX:s.mx!=null?Math.round(s.mx*100):null,biasY:s.my!=null?Math.round(s.my*100):null,rule:strict?'fai':'practice'},
+    challenge:[SF_OPTS[sfIdx].code!=='std'?SF_OPTS[sfIdx].label:'',holdOff?'無定高':'',gearMax>1?GEAR_NAME[gearMax-1]+'檔':'',strict?'正式判定':''].filter(Boolean).join('・')||'標準',
+    challengeCode:`aim-s${stageN}-${SF_OPTS[sfIdx].code}-g${gearMax}${holdOff?'-h0':''}${strict?'-fai':''}`});
+  const tip=s.bias?`<p>💡 你的習慣：<b>${s.bias}</b>。下一輪出發前，先把機子往${s.mx>0.04?'右':s.mx<-0.04?'左':''}${s.my>0.04?'下':s.my<-0.04?'上':''}修一點再衝。</p>`:'';
+  const btns=[{id:'b-again',label:'🔁 再練一次',onClick:startStage,primary:!passed}];
+  if(passed&&stageN<STAGES.length)btns.unshift({id:'b-next',label:`▶ 下一階段：${STAGES[stageN].name}`,onClick:()=>{ stageN++; startStage(); },primary:true});
+  btns.push({id:'b-replay',label:'📼 回放最後 15 秒',onClick:()=>{ ui.closeModal(); engine.paused=true; if(!replay.open(()=>{ engine.paused=false; finishStage(); }))finishStage(); }});
+  btns.push({id:'b-menu',label:'⚙ 換階段／設定',onClick:showIntro});
+  btns.push({id:'b-soccer',label:'⚽ 去踢 3v3 比賽',onClick:()=>location.href='soccer-match.html'});
+  ui.showModal({title:`${['😅','⭐','⭐⭐','⭐⭐⭐'][stars]}　第 ${stageN} 階段 ${passed?'過關':'再加油'}`,
+    html:`<p style="text-align:center;font-size:22px">${st.time?`60 秒穿過 <b>${s.hits}</b> 次`:`命中 <b>${s.hits}</b>／${s.n}`}</p>
+      <p style="text-align:center">平均離中心 ${s.avg} cm${st.time?'':`　過關要 ${st.pass} 次`}</p>${tip}
+      ${passed||st.time?'':'<p>還差一點！記得「先停下來對準，再推」。</p>'}`,
+    buttons:btns});
+  ui.gpSetFocus(btns.map(b=>b.id),0);
+}
+
+/* ── 開始畫面／暫停 ── */
+function showIntro(){
+  engine.simStarted=false; phase='intro'; document.getElementById('aim-panel').style.display='none'; document.getElementById('res').style.display='none';
+  ui.showModal({title:'🎯 足球穿環特訓',
+    summary:'只有你一台機。<b>對準紅色球門環、穿過去</b>——一步一步練到在比賽中也穿得進。',
+    tags:['4 個階段','跟 3v3 比賽同一套物理','準星會告訴你會從哪裡穿過'],
+    rules:`<p>🎯 準星（預測落點）：<b style="color:#4ade80">綠＝會進</b>、<b style="color:#fbbf24">黃＝擦邊</b>、<b style="color:#f87171">紅＝會撞框</b>。前三階段預設顯示，第 4 階段預設不給。</p>
+      <p>📍 每次穿過（或撞到環）都會在環上留一個點；右邊的「落點分布」會算出你平均偏哪邊。</p>
+      <p>⌨ C 視角・G／手把 RT 換檔・R 這一次重來（不算次數）・T 回放・Esc 暫停</p>
+      <p>💡 訣竅：初學者先用<b>一檔＋定高</b>，停下來對準了再往前推；不要邊衝邊修方向。</p>`,
+    settings:[
+      {id:'stage',label:'階段',value:String(stageN),options:STAGES.map(s=>({v:String(s.n),label:(s.n>unlocked?'🔒 ':'')+s.n+' '+s.name,disabled:s.n>unlocked})),
+        hint:v=>STAGES[+v-1].goal.replace(/<[^>]+>/g,'')+(+v>1&&unlocked<+v?'（前一階段過關才會開放）':''),
+        onChange:v=>{ if(+v<=unlocked)stageN=+v; }},
+      {id:'sf',label:'機型',value:SF_OPTS[sfIdx].code,options:SF_OPTS.map(o=>({v:o.code,label:o.label})),
+        onChange:v=>{ sfIdx=SF_OPTS.findIndex(o=>o.code===v); progress.setSetting('soccerSFCode',v); }},
+      {id:'hold',label:'🧭 定高',value:holdOff?'0':'1',options:[{v:'1',label:'開'},{v:'0',label:'關'}],
+        hint:v=>v==='0'?'放開油門會往下掉，要自己抓住高度':'放開油門會停在原本的高度（初學者建議開）',
+        onChange:v=>{ holdOff=v==='0'; progress.setSetting('soccerHoldOff',holdOff); }},
+      {id:'assist',label:'🎯 準星',value:assistMode,options:[{v:'auto',label:'依階段'},{v:'on',label:'一直開'},{v:'off',label:'不要'}],
+        onChange:v=>{ assistMode=v; progress.setSetting('aimAssist',v); }},
+      {id:'rule',label:'進球判定',value:strict?'1':'0',options:[{v:'0',label:'練習寬鬆'},{v:'1',label:'正式 FAI'}],
+        hint:v=>v==='1'?'整顆球要穿過（擦內緣也算）':'球心穿過內徑就算',
+        onChange:v=>{ strict=v==='1'; progress.setSetting('aimStrict',strict); }},
+    ],
+    buttons:[
+      {id:'b-go',label:'▶ 開始練習',onClick:startStage,primary:true},
+      {id:'b-soccer',label:'⚽ 3v3 比賽',onClick:()=>location.href='soccer-match.html'},
+      {id:'b-back',label:'返回入口',onClick:()=>location.href='../index.html'}]});
+  ui.gpSetFocus(['b-go','b-soccer','b-back'],0);
+}
+function togglePause(){
+  if(replay.active||!engine.simStarted||phase==='done'||phase==='intro')return;
+  engine.paused=!engine.paused;
+  if(engine.paused)showPause(); else ui.closeModal();
+}
+function openReplay(){ ui.closeModal(); engine.paused=true; if(!replay.open(()=>showPause())){ showPause(); hud.toast('還沒有可以回放的畫面','warn'); } }
+function showPause(){
+  ui.showModal({title:'暫停',html:`<p>第 ${stageN} 階段：${stage().name}　命中 ${log.filter(t=>t.ok).length}／${log.length}</p>`,
+    buttons:[{id:'b-resume',label:'繼續',onClick:togglePause},
+      {id:'b-replay',label:'📼 回放最近 15 秒（多視角）',onClick:openReplay},
+      {id:'b-restart',label:'🔁 這一階段重來',onClick:()=>{ engine.paused=false; startStage(); }},
+      {id:'b-menu',label:'⚙ 換階段／設定',onClick:()=>{ engine.paused=false; showIntro(); }},
+      {id:'b-density',label:'HUD：'+DENSITY_LABELS[hud.density],onClick:()=>{hud.cycleDensity();showPause();}}]});
+}
+
+addEventListener('keydown',e=>{
+  if(e.code==='KeyC')cycleCam();
+  if(e.code==='KeyG'&&phase==='fly')toggleGear();
+  if(e.code==='KeyR'&&phase==='fly'){ place(stage().time?randStart():starts[tryI]); tryT=0; }
+  if(e.code==='Escape')togglePause();
+  if(e.code==='KeyT'&&engine.simStarted&&!replay.active&&(phase==='fly'||phase==='show'))openReplay();
+});
+hud.onCamButton(cycleCam); hud.onPauseButton(togglePause); hud.attachTouch(input);
+hud.setMission('🎯 足球穿環特訓'); syncModes();
+const mapTargets=[{pos:goals[0].mesh.position,color:'#3c64ff'},{pos:goals[1].mesh.position,color:'#ff321e'}];
+let _prevGpY=false;
+
+/* ── 主迴圈 ── */
+engine.start((dt,simStarted)=>{
+  input.update(dt); ui.update(dt);
+  if(engine.paused)return;
+  const p=input.player(0);
+  hud.setGpBar(p.device,{keyboard:'<kbd>G</kbd>檔位　<kbd>R</kbd>重來',gamepad:'<kbd>{gear}</kbd>檔位',touch:''});
+  { const pos=input.gearPos();
+    if(pos!=null){ if(window._gearPos!=null&&pos!==window._gearPos&&phase==='fly'&&!ui.modalOpen)toggleGear(); window._gearPos=pos; }
+    else{ const yNow=input.anyBtn('gear'); if(yNow&&!_prevGpY&&phase==='fly'&&!ui.modalOpen)toggleGear(); _prevGpY=yNow; } }
+  if(p.device==='gamepad'&&simStarted&&!ui.modalOpen&&p.fnEdge('camCycle'))cycleCam();
+  if(simStarted&&(phase==='fly'||phase==='show')){
+    const st=stage();
+    if(st.time){ timeLeft-=dt; if(timeLeft<=0){ timeLeft=0; finishStage(); } }
+    if(phase==='fly'){
+      player.step(dt,p,SF_OPTS[sfIdx].v,holdOff,feel());
+      tryT+=dt;
+      // 穿過球門環面（往對方底線方向）＝判定一次
+      if(player.prevZ<F.GZ&&player.pos.z>=F.GZ){
+        const g=checkGoal(player,{strict}), q=player._xp&&player._xp[2]>=F.GZ?player._xp:[player.pos.x,player.pos.y];
+        judge('cross',{goal:g,x:q[0],y:q[1]});
+      }else if(Math.abs(player.pos.z-F.GZ)<0.32&&player.vel.z<-0.15&&tryT>0.3){   // 撞到環被彈回來（沒穿過）
+        const r=Math.hypot(player.pos.x,player.pos.y-F.GY);
+        if(r>F.GI-0.08&&r<F.GO+F.BR+0.05) judge('cross',{goal:null,x:player.pos.x,y:player.pos.y,bounce:true});
+      }else if(tryT>(st.time?12:7)) judge('timeout');
+    }else{
+      showT-=dt; player.step(dt,{throttle:0,yaw:0,pitch:0,roll:0},SF_OPTS[sfIdx].v,holdOff,feel());
+      if(showT<=0&&phase==='show'){ document.getElementById('res').style.display='none'; nextTry(); }
+    }
+  }
+  player.mesh.position.copy(player.pos);
+  player.mesh.rotation.order='YXZ'; player.mesh.rotation.y=player.yaw+Math.PI; player.mesh.rotation.x=-(player.tP||0); player.mesh.rotation.z=(player.tR||0);
+  goals.forEach((g,i)=>{ g.mesh.rotation.z+=dt*(i?.25:.2); g.light.intensity=0.3; });
+  player.mesh.visible=camMode!=='fpv';
+  if(simStarted&&phase!=='intro')replay.record(dt,`第 ${stageN} 階段　第 ${Math.min(tryI+1,stage().tries||99)} 次`);
+  updateAim(); updateCam();
+  hud.setTelemetry(player.pos.y,player.vel.length());
+  const s=stats();
+  hud.setProgress(stage().time?`穿過 ${s.hits} 次`:`第 ${Math.min(tryI+1,stage().tries)}／${stage().tries} 次　命中 ${s.hits}`);
+  hud.setTimer(simStarted&&stage().time?timeLeft:null);
+  hud.drawMinimap(player.pos,player.yaw+Math.PI,F.HL,mapTargets);
+  hud.update(dt,engine.camera,player.pos);
+});
+
+showIntro();
+addEventListener('beforeunload',()=>engine.dispose());
+window.ndDebug=()=>({phase,stageN,tryI,unlocked,log,pos:player.pos.toArray().map(v=>+v.toFixed(2))});
+window.ndTest={unlockAll:()=>{ unlocked=4; progress.setSetting('aimUnlock',4); }};
+</script>
+</body>
+</html>

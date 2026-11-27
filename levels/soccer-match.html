@@ -275,8 +275,9 @@ function showIntro(){   // 2026-10-11 統一開始畫面格式（一句重點＋
     buttons:[
       {id:'b-go',label:'▶ 開賽！',onClick:startMatch,primary:true},
       {id:'b-demo',label:'📺 展示模式（AI 對戰）',onClick:startDemo},
+      {id:'b-aim',label:'🎯 穿環特訓（初學者先練）',onClick:()=>location.href='soccer-aim.html'},
       {id:'b-back',label:'返回入口',onClick:()=>location.href='../index.html'}]});
-  ui.gpSetFocus(['b-go','b-demo','b-back'],0);
+  ui.gpSetFocus(['b-go','b-demo','b-aim','b-back'],0);
 }
 function demoReset(){
   curSet=1; setTimer=F.SET_DUR; scores={A:0,B:0}; setsWon={A:0,B:0}; setGoals={A:0,B:0};
@@ -305,7 +306,7 @@ addEventListener('pointermove',()=>{ idleT=0; });
 function startMatch(){
   ui.closeModal(); sfx.play('click');
   engine.simStarted=true; phase='playing';
-  gearMax=player.gear; player.power=powerOn; drones.forEach(d=>d.hitFx=hitFx);   // 2026-11-28 AI 也會被撞翻、滾地、卡網 powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
+  gearMax=player.gear; player.power=powerOn; drones.forEach(d=>d.hitFx=hitFx); /* 2026-11-28 AI 也會被撞翻、滾地、卡網 */ powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
   hud.setMission('⚽ 第 1 節');
   hud.toast(noHold?'開賽！注意抓住油門，放開會下墜':'開賽！衝向對面紅色球門環',noHold?'warn':'ok');
 }
