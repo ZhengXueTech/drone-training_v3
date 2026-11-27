@@ -192,6 +192,16 @@ export function updateSoccerAI(d,dt,ctx){
     return;
   }
 
+  /* 2026-11-28 老師：「被撞入球框不能原地從球框內回來」→ 被撞進自家環：往後穿過去，再從旁邊繞回場內；
+         人在球門後面時不從環中間穿回來（先橫移到環外側，再往前）。 */
+      if(d.role!=='striker'){ const ownGZ=d.team===TA?-F.GZ:F.GZ, side=d.team===TA?1:-1;
+        const dz=(d.pos.z-ownGZ)*side, r=Math.hypot(d.pos.x,d.pos.y-F.GY), clear=F.GO+F.BR+0.12;
+        if(dz>-0.02&&dz<0.15&&r<F.GI+0.05){ _tgt.set(d.pos.x*0.5,F.GY+(d.pos.y-F.GY)*0.5,ownGZ-side*0.45); moveTo(d,_tgt,dt,6*SF); return; }   // 真的進到環裡：往後穿過去（往環中心修正，免得卡環管）
+        if(dz>-0.02&&dz<0.25&&r<F.GO+F.BR){ _tgt.set(d.pos.x,clamp(d.pos.y,F.BR+.1,F.FH-F.BR-.1),ownGZ+side*0.5); moveTo(d,_tgt,dt,6*SF); return; }   // 只是貼在環口外面：往場內離開，不擋在門口
+        if(dz<=-0.02){   // 在自家球門後面：先橫移到環外，再往前繞回
+          if(r<clear){ const sx=d.pos.x>=0?1:-1; _tgt.set(clamp(sx*(clear+0.05),-F.HW+F.BR*2,F.HW-F.BR*2),clamp(d.pos.y,F.BR+.1,F.FH-F.BR-.1),ownGZ-side*0.4); }
+          else _tgt.set(d.pos.x,clamp(d.pos.y,F.BR+.1,F.FH-F.BR-.1),ownGZ+side*0.6);
+          moveTo(d,_tgt,dt,6*SF); return; } }
   switch(d.role){
     case 'striker':{   // stage → charge → stage
       // v3 聰明一點：①從守門員的另一側切入（不再永遠正面直衝）②衝刺途中前面被擋住就放棄、重新繞
@@ -264,10 +274,8 @@ export function updateSoccerAI(d,dt,ctx){
     case 'defender':{
       /* 2026-11-28 老師錄影「明顯犯規」：守門員停在自家球門環裡擋（FAI B.8.4：非前鋒為了防守穿越或停留自家環＝點球）。
          ①擋人時最近只到環面前 0.30 m（球框 11 cm＋環管 7.5 cm，不會伸進環裡）
-         ②被撞進環口（離環面 <0.25 m、在環的範圍內）→ 先往場內退出來，不留在裡面擋。 */
-      { const ownGZ=d.team===TA?-F.GZ:F.GZ, side=d.team===TA?1:-1;
-        const inRing=Math.abs(d.pos.z-ownGZ)<0.25&&Math.hypot(d.pos.x,d.pos.y-F.GY)<F.GO+F.BR;
-        if(inRing){ _tgt.set(d.pos.x,clamp(d.pos.y,F.BR+.1,F.FH-F.BR-.1),ownGZ+side*0.5); moveTo(d,_tgt,dt,6*SF); break; } }
+         ②被撞進環裡的處理見上方（往後穿過去、從旁邊繞回；不原路退回）。 */
+
       if(d.team===TB){   // TB 守門員：主動阻擋
         if(player.mustReturn){ giveWay(d,player,F.GZ-.5,dt,SF); break; }   // v3：玩家進球後回程，不能擋
         const distP=d.pos.distanceTo(player.pos);

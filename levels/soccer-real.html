@@ -110,7 +110,7 @@ let cageSpin=false, crouch=false, returnWarned=false;
 let diff=progress.setting('soccerDiff','med');
 let role=progress.setting('soccerRealRole','striker');  // striker|defender
 /* 判罰系統 */
-let setFouls=0, totalFouls=0, yellow=false, ringDwell=0, ringGrace=0, pushGrace=0;
+let setFouls=0, totalFouls=0, yellow=false, ringDwell=0, ringGrace=0, pushGrace=0, ringSide=null, ringDeep=false;
 let attackT=0, lingerT=0, mustFouled=false, mustWarned=false;
 /* 電池（每局一顆；FAI 每局換電池） */
 let batt=100, battWarned=false;
@@ -340,10 +340,21 @@ function updateReferee(dt){
     const ownGZ=-F.GZ;   // 玩家永遠 A 隊，自家環在 -GZ
     const rr=Math.hypot(player.pos.x,player.pos.y-F.GY);
     const inRing=rr<F.GO+F.BR&&Math.abs(player.pos.z-ownGZ)<0.30;
-    /* 2026-11-28 被撞進自家球門（老師）：FAI B.8.4 罰的是「為了防守」穿越或停留；被撞進去不是故意的 →
-       撞擊恢復／滾地／卡網期間不計時，恢復後再給 1.5 秒離開（往哪邊退出都可以，但不能留在裡面擋）。 */
+    /* 2026-11-28 被撞進自家球門（老師：「原則上被撞入球框不能原地從球框內回來」）：
+       被撞進去不算違規，但要往後穿過去、從旁邊或下面繞回場內；從環裡原路退回場內、或從球門後面再穿回場內＝違規。
+       撞擊恢復／滾地／卡網期間不計停留時間，穩住後再給 1.5 秒穿過去。 */
+    const zs=Math.sign(player.pos.z-ownGZ)||1;               // +1＝場內那一側，-1＝球門後面
+    if(inRing&&ringSide==null)ringSide=zs;
+    if(inRing&&rr<F.GI+0.05&&Math.abs(player.pos.z-ownGZ)<0.12)ringDeep=true;   // 真的進到環裡（不是擦邊）
+    if(!inRing&&ringSide!=null){
+      if(ringDeep&&zs>0&&ringGrace<=0){
+        foul(ringSide>0?'被撞進自家球門後原路退回——要往後穿過去、從旁邊繞回（FAI B.8.4）':'從自家球門後面穿過球門回到場內（FAI B.8.4）');
+        ringGrace=3;
+      }else if(ringDeep&&zs<0&&ringSide>0) hud.toast('穿過自家球門了：從旁邊或下面繞回場內，不要再從環中間穿回去','ok');
+      ringSide=null; ringDeep=false; pushGrace=0;
+    }
     if(inRing&&(player.recT>0||player.rollT>0||player.netT>0||player.dropT>0)){
-      if(!(pushGrace>0))hud.toast('被撞進自家球門：穩住後 1.5 秒內離開就不算違規','warn');
+      if(!(pushGrace>0))hud.toast('被撞進自家球門：往後穿過去、從旁邊繞回（不能原路退回）','warn');
       pushGrace=1.5; ringDwell=0;
     }else if(pushGrace>0){ pushGrace-=dt; if(!inRing)pushGrace=0; ringDwell=0; }
     else if(inRing&&ringGrace<=0){
