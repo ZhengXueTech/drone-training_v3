@@ -51,13 +51,17 @@ import { HUD, DENSITY_LABELS } from '../core/hud.js';
 import { UI } from '../core/ui.js';
 import { buildDroneStyle } from '../core/drone-styles.js';
 import '../core/soccer-arena.js';
-import { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField, checkGoal, strictR, SOCCER_FEEL } from '../core/systems/soccer.js';
-import { Replay } from '../core/replay.js';
+/* 只用「舊版 soccer.js 也有」的名字；新功能用 SOC.xxx 有就用、沒有就退回（網站上的 core 檔還沒更新時，這關照樣打得開） */
+import * as SOC from '../core/systems/soccer.js';
+const { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField, checkGoal, SOCCER_FEEL } = SOC;
+const strictR=SOC.strictR||(()=>SOC.FIELD.GI-SOC.FIELD.BR+0.035);
+let Replay=null; try{ ({Replay}=await import('../core/replay.js')); }catch(e){ console.warn('沒有 core/replay.js，回放功能先關閉',e); }
 import { sfx } from '../core/audio.js';
 import { progress } from '../data/progress.js';
 import { getLevel } from '../data/levels-manifest.js';
 
-const LEVEL=getLevel('soccer-aim');
+// 瀏覽器還留著舊的 levels-manifest.js（快取）時 getLevel 會找不到 → 用內建設定，關卡照樣能開
+const LEVEL=getLevel('soccer-aim')||{id:'soccer-aim',hud:{battery:false,wind:false,minimap:true,telemetry:true,gpbar:true}};
 progress.migrateLegacy();
 const F=FIELD;
 
@@ -72,7 +76,8 @@ const player=new SoccerDrone(0);
 player.mesh=buildDroneStyle('soccer-cage',{tc:SOCCER_SEATS[0].tc,sc:SOCCER_SEATS[0].sc,isPlayer:true});
 engine.scene.add(player.mesh);
 player.gears=4;
-const replay=new Replay({engine,input,drones:[player],field:F,teamA:TA,focus:player,label:()=>'你'});
+const replay=Replay?new Replay({engine,input,drones:[player],field:F,teamA:TA,focus:player,label:()=>'你'})
+  :{active:false,record(){},mark(){},open(){ return false; }};   // 沒有回放模組時的空殼
 
 /* ── 設定 ── */
 const SF_OPTS=[
