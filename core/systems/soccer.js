@@ -205,7 +205,7 @@ export class SoccerDrone{
     this.yaw=this.team===TA?0:Math.PI; this.prevZ=this.pos.z; this.spinV=0;
     this.mustReturn=false; this.aiState='stage'; this.aiT=Math.random()*1.5;
     this.anomalyT=0; this._geArmed=false; this._frozenInput=null;   // gear 是裝備設定，不隨每球重置
-    this.tP=0; this.tR=0; this.tilt=0; this.holdY=null; this.recT=0; this.wob=[0,0];
+    this.tP=0; this.tR=0; this.tilt=0; this.holdY=null; this.recT=0; this.wob=[0,0]; this.rollT=0; this.netT=0; this.rollP=0; this.rollR=0;
     this._unstickT=0; this._stuckT=0; this._stuckRef=null;   // AI 互卡脫離（core/systems/ai.js）
   }
   triggerAnomaly(dur){ _triggerAnomaly(this,dur); }
@@ -223,6 +223,7 @@ export class SoccerDrone{
     this._ctl=ctl;   // 2026-11-19 記下輸入來源 → core/feedback.js 撞擊回饋（AI 不經過 step，所以沒有）
     rollGroundEffect(this,this.pos.y-FIELD.BR,this.vel.y);
     const inp=dampInput(this,ctl,dt);
+    if(this.hitFx&&this._hitState(dt,inp))return;
     const GM=(this.gears===4?GEAR4_MULT:GEAR_MULT)[this.gear]??1.0;
     const PM=this.power?powerStep(this,dt,inp):1;   // 2026-11-27 電池壓降＋馬達過熱（core/systems/power.js）
     const AM=feel?feel.accel:1, YM=feel?feel.yaw:1;
@@ -263,6 +264,52 @@ export class SoccerDrone{
     this.integrate(dt, ax, ay-loss+lift+hold, az, yr);
   }
   /* 原始積分（AI moveTo 直接用；ax/az 依 yaw 轉世界系——沿基本版行為） */
+  /* ── 2026-11-28 物理第二批：滾地與卡網（老師：「被撞夠大力，或出現慣性，可能在地上滾，或者卡撞到網子，
+     然後操作上才是要等微停」）。只有 hitFx=true 的玩家機會發生；AI 不受影響。
+     · 滾地：帶著水平速度重落地（往下 ≥2.5 m/s 且水平 ≥0.8；或直直砸下 ≥4 m/s），或剛被撞（recT）又貼地高速滑行（≥1.6 m/s）→ 在地上滾 0.6～1.4 秒，
+       這段時間馬達沒辦法把它拉起來；滾完還要約半秒等機身穩定（recT）才完全回來。
+     · 卡網：撞網速度 ≥1.8 m/s 有機率卡住（越快越容易、最多 7 成），卡 0.6～1.6 秒；
+       往網子的反方向拉，脫困快 2.5 倍；被別台撞開也會脫困。 */
+  _floorHit(vy){
+    if(this.rollT>0||this.netT>0)return;
+    const vh=Math.hypot(this.vel.x,this.vel.z);
+    if((vy>=2.5&&vh>=0.8)||vy>=4||(this.recT>0&&vh>=1.6&&vy>0.2)){
+      this.rollT=Math.min(1.4,0.6+vy*0.15+vh*0.12); this._evt='roll';
+    }
+  }
+  _netHit(v,nx,ny,nz){
+    if(v<1.8||this.netT>0||this.rollT>0)return;
+    if(Math.random()>Math.min(0.7,(v-1.8)/2+0.2))return;
+    this.netT=Math.min(1.6,0.6+(v-1.8)*0.4); this.netN=[nx,ny,nz]; this.netPos=this.pos.clone();
+    this.vel.set(0,0,0); this._evt='net';
+  }
+  /* 回傳 true＝這一幀被「滾地／卡網」接管，step() 不再做一般操控 */
+  _hitState(dt,inp){
+    const F=FIELD;
+    if(this.netT>0){
+      if(this.pos.distanceTo(this.netPos)>0.12){ this.netT=0; return false; }   // 被撞開＝脫困
+      const sy=Math.sin(this.yaw), cy=Math.cos(this.yaw), n=this.netN;
+      const wx=-inp.roll*cy+inp.pitch*sy, wz=inp.roll*sy+inp.pitch*cy;          // 搖桿方向（世界座標，近似）
+      const away=wx*n[0]+wz*n[2]+(n[1]?-(inp.throttle||0):0);
+      this.netT-=dt*(away>0.5?2.5:1);
+      this.pos.copy(this.netPos); this.vel.set(0,0,0);
+      if(this.netT<=0){ this.netT=0; this.recT=Math.max(this.recT||0,0.4); }
+      return true;
+    }
+    if(this.rollT>0){
+      this.rollT-=dt;
+      const k=Math.exp(-1.6*dt); this.vel.x*=k; this.vel.z*=k;                    // 滾動摩擦
+      const f=this.vel.x*Math.sin(this.yaw)+this.vel.z*Math.cos(this.yaw), sd=this.vel.x*Math.cos(this.yaw)-this.vel.z*Math.sin(this.yaw);
+      this.rollP=(this.rollP||0)+f/F.BR*dt; this.rollR=(this.rollR||0)+sd/F.BR*dt;  // 畫面：球框滾動
+      this.tP=0; this.tR=0; this.holdY=null;
+      this.integrate(dt,0,0,0,0);                                                // 馬達拉不起來，只剩重力和慣性
+      if(this.rollT<=0){ this.rollT=0; this.recT=Math.max(this.recT||0,0.5);
+        const w=a=>Math.atan2(Math.sin(a),Math.cos(a)); this.rollP=w(this.rollP); this.rollR=w(this.rollR); }
+      return true;
+    }
+    if(this.rollP||this.rollR){ const k=Math.exp(-dt/0.15); this.rollP*=k; this.rollR*=k; if(Math.abs(this.rollP)+Math.abs(this.rollR)<0.01){this.rollP=0;this.rollR=0;} }
+    return false;
+  }
   integrate(dt,ax,ay,az,yr){
     const P=SOCCER_PHYS, F=FIELD;
     this.prevZ=this.pos.z;
@@ -276,12 +323,13 @@ export class SoccerDrone{
     this.vel.multiplyScalar(Math.pow(this._dragPerSec??P.DRAG_PER_SEC,dt));   // [FIX bug#6]；_dragPerSec＝玩家機速手感（AI 不設）
     this.pos.addScaledVector(this.vel,dt);
     // 地板/天花板/牆
-    if(this.pos.y<F.BR){this.pos.y=F.BR;bump(this,-this.vel.y,'floor');this.vel.y=Math.abs(this.vel.y)*P.FBOUNCE;}
-    if(this.pos.y>F.FH-F.BR){this.pos.y=F.FH-F.BR;bump(this,this.vel.y);this.vel.y=-Math.abs(this.vel.y)*P.WBOUNCE;}
-    if(this.pos.x<-HW+F.BR){this.pos.x=-HW+F.BR;bump(this,-this.vel.x);this.vel.x= Math.abs(this.vel.x)*P.WBOUNCE;}
-    if(this.pos.x> HW-F.BR){this.pos.x= HW-F.BR;bump(this,this.vel.x);this.vel.x=-Math.abs(this.vel.x)*P.WBOUNCE;}
-    if(this.pos.z<-HL+F.BR){this.pos.z=-HL+F.BR;bump(this,-this.vel.z);this.vel.z= Math.abs(this.vel.z)*P.WBOUNCE;}
-    if(this.pos.z> HL-F.BR){this.pos.z= HL-F.BR;bump(this,this.vel.z);this.vel.z=-Math.abs(this.vel.z)*P.WBOUNCE;}
+    const fx=this.hitFx;   // 2026-11-27 滾地／卡網（只有關卡開啟的玩家機；AI 不設）
+    if(this.pos.y<F.BR){const vy=-this.vel.y;this.pos.y=F.BR;bump(this,vy,'floor');this.vel.y=Math.abs(this.vel.y)*P.FBOUNCE;if(fx)this._floorHit(vy);}
+    if(this.pos.y>F.FH-F.BR){const v=this.vel.y;this.pos.y=F.FH-F.BR;bump(this,v);this.vel.y=-Math.abs(this.vel.y)*P.WBOUNCE;if(fx)this._netHit(v,0,-1,0);}
+    if(this.pos.x<-HW+F.BR){const v=-this.vel.x;this.pos.x=-HW+F.BR;bump(this,v);this.vel.x= Math.abs(this.vel.x)*P.WBOUNCE;if(fx)this._netHit(v,1,0,0);}
+    if(this.pos.x> HW-F.BR){const v=this.vel.x;this.pos.x= HW-F.BR;bump(this,v);this.vel.x=-Math.abs(this.vel.x)*P.WBOUNCE;if(fx)this._netHit(v,-1,0,0);}
+    if(this.pos.z<-HL+F.BR){const v=-this.vel.z;this.pos.z=-HL+F.BR;bump(this,v);this.vel.z= Math.abs(this.vel.z)*P.WBOUNCE;if(fx)this._netHit(v,0,0,1);}
+    if(this.pos.z> HL-F.BR){const v=this.vel.z;this.pos.z= HL-F.BR;bump(this,v);this.vel.z=-Math.abs(this.vel.z)*P.WBOUNCE;if(fx)this._netHit(v,0,0,-1);}
     this._ringBounce();
   }
   /* 球門環碰撞（沿基本版 goalRingBounce） */

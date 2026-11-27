@@ -98,6 +98,7 @@ if(progress.setting('soccerSFCode','std')==='expert'){ progress.setSetting('socc
 let sfIdx=Math.max(0,SF_OPTS.findIndex(o=>o.code===progress.setting('soccerSFCode','std')));
 let SF=SF_OPTS[sfIdx].v, noHold=SF_OPTS[sfIdx].noHold;
 let holdOff=!!progress.setting('soccerHoldOff',false); if(holdOff)noHold=true;
+let hitFx=!!progress.setting('soccerHitFx',false);   // 2026-11-28 滾地與卡網（預設關）
 let powerOn=!!progress.setting('soccerPower',false);   // 2026-11-27 電池與過熱（預設關）   // 2026-10-11 開賽前可單獨關掉定高（不必選專家機速）
 const DIFF_LABEL={easy:'😊 簡單',med:'⚡ 中等',hard:'💀 困難'};
 /* 2026-11-21 展示模式（老師：「新增廣告功能，AI 跑給你看」；開始畫面按鈕＋閒置 60 秒自動播；固定全場視角；
@@ -154,10 +155,10 @@ function soccerChallenge(){
   if(c!=='std')t.push(SF_OPTS[sfIdx].label);
   if(holdOff)t.push('無定高');
   if(gearMax>1)t.push(GEAR_NAME[gearMax-1]+'檔');
-  if(powerOn)t.push('電池過熱'); 
+  if(powerOn)t.push('電池過熱'); if(hitFx)t.push('滾地卡網'); 
   return t.join('・');
 }
-function soccerChallengeFields(){ const t=soccerChallenge(); return {challenge:t||'標準',challengeCode:`sf-${SF_OPTS[sfIdx].code}-g${gearMax}${holdOff?'-h0':''}${powerOn?'-p1':''}`}; }
+function soccerChallengeFields(){ const t=soccerChallenge(); return {challenge:t||'標準',challengeCode:`sf-${SF_OPTS[sfIdx].code}-g${gearMax}${holdOff?'-h0':''}${powerOn?'-p1':''}${hitFx?'-x1':''}`}; }
 function toggleGear(){
   player.gear=player.gear%4+1;   // 一→二→三→四→一
   gearMax=Math.max(gearMax,player.gear);
@@ -259,6 +260,9 @@ function showIntro(){   // 2026-10-11 統一開始畫面格式（一句重點＋
       {id:'pwr',label:'🔋 電池與過熱',value:powerOn?'1':'0',options:[{v:'0',label:'關'},{v:'1',label:'開'}],
         hint:v=>v==='1'?'越飛電越少（推油門變軟、鬆開會回來）；三、四檔飛久了馬達會過熱掉力，要到下一節才恢復':'不模擬電池和溫度',
         onChange:v=>{ powerOn=v==='1'; progress.setSetting('soccerPower',powerOn); }},
+      {id:'hitfx',label:'🧱 滾地與卡網',value:hitFx?'1':'0',options:[{v:'0',label:'關'},{v:'1',label:'開'}],
+        hint:v=>v==='1'?'被撞太大力或重落地會在地上滾一下；高速撞網可能卡住，往反方向拉比較快脫困':'撞到地板和網子只會彈開',
+        onChange:v=>{ hitFx=v==='1'; progress.setSetting('soccerHitFx',hitFx); }},
     ],
     buttons:[
       {id:'b-go',label:'▶ 開賽！',onClick:startMatch,primary:true},
@@ -293,7 +297,7 @@ addEventListener('pointermove',()=>{ idleT=0; });
 function startMatch(){
   ui.closeModal(); sfx.play('click');
   engine.simStarted=true; phase='playing';
-  gearMax=player.gear; player.power=powerOn; powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
+  gearMax=player.gear; player.power=powerOn; player.hitFx=hitFx; powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
   hud.setMission('⚽ 第 1 節');
   hud.toast(noHold?'開賽！注意抓住油門，放開會下墜':'開賽！衝向對面紅色球門環',noHold?'warn':'ok');
 }
@@ -352,6 +356,7 @@ engine.start((dt,simStarted)=>{
     if(demo) drones.forEach(d=>updateSoccerAI(d,dt,{drones,player,SF:1,diff:'hard'}));
     else{
     player.step(dt,p,SF,noHold,SOCCER_FEEL[SF_OPTS[sfIdx].code]);
+    if(player._evt){ hud.toast(player._evt==='net'?'🧱 卡網了！往網子的反方向拉，比較快脫困':'🌀 在地上滾…等機身穩定再起飛','warn'); player._evt=null; }
     if(player.power){ for(const [,m] of powerAlerts(player))hud.toast(m,'warn');
       window._pwT=(window._pwT||0)+dt; if(window._pwT>0.5){ window._pwT=0; syncModes(); } }
     drones.slice(1).forEach(d=>updateSoccerAI(d,dt,{drones,player,SF,diff}));
@@ -372,7 +377,7 @@ engine.start((dt,simStarted)=>{
   // 機體同步（soccer yaw=0 朝 +Z；drone-styles 機頭 -Z → +PI 轉正）
   for(const d of drones){
     d.mesh.position.copy(d.pos);
-    d.mesh.rotation.order='YXZ'; d.mesh.rotation.y=d.yaw+Math.PI; d.mesh.rotation.x=-(d.tP||0); d.mesh.rotation.z=(d.tR||0);   // 2026-11-21 擬真：機身跟著傾斜（看得出前傾／側傾）
+    d.mesh.rotation.order='YXZ'; d.mesh.rotation.y=d.yaw+Math.PI; d.mesh.rotation.x=-((d.tP||0)+(d.rollP||0)); d.mesh.rotation.z=(d.tR||0)+(d.rollR||0);   // 2026-11-21 擬真：機身跟著傾斜（看得出前傾／側傾）
     if(cageSpin&&d.mesh.userData.spin){
       d.mesh.userData.spin.rotation.x+=dt*1.1;
       d.mesh.userData.spin.rotation.z+=dt*.6;

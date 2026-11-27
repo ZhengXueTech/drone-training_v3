@@ -119,6 +119,7 @@ if(progress.setting('soccerSFCode','std')==='expert'){ progress.setSetting('socc
 let sfIdx=Math.max(0,SF_OPTS.findIndex(o=>o.code===progress.setting('soccerSFCode','std')));
 let SF=SF_OPTS[sfIdx].v, noHold=SF_OPTS[sfIdx].noHold;
 let holdOff=!!progress.setting('soccerHoldOff',false); if(holdOff)noHold=true;
+let hitFx=true;   // 擬真賽規：滾地與卡網一律開（core/systems/soccer.js _hitState）
 let powerOn=true;   // 擬真賽規：電池與馬達溫度一律開（core/systems/power.js；局間換電池＝充滿、降溫）   // 2026-10-11 開賽前可單獨關掉定高（不必選專家機速）
 const DIFF_LABEL={easy:'😊 簡單',med:'⚡ 中等',hard:'💀 困難'};
 const ROLE_LABEL={striker:'⚽ 前鋒（可得分）',defender:'🛡 守門後衛'};
@@ -397,7 +398,7 @@ function startMatch(){
   ui.closeModal(); sfx.play('click');
   applyRole();
   engine.simStarted=true;
-  gearMax=player.gear; player.power=powerOn; powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
+  gearMax=player.gear; player.power=powerOn; player.hitFx=hitFx; powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
   hud.setMission('🏆 第 1 局');
   startLaunch();
 }
@@ -458,6 +459,7 @@ engine.start((dt,simStarted)=>{
     if(yellow){ player.integrate(dt,0,0,0,0); }          // 黃牌停飛：斷油門落地
     else player.step(dt,p,effSF,noHold,SOCCER_FEEL[SF_OPTS[sfIdx].code]);
     batt=(player.batt??1)*100;
+    if(player._evt){ hud.toast(player._evt==='net'?'🧱 卡網了！往網子的反方向拉，比較快脫困':'🌀 在地上滾…等機身穩定再起飛','warn'); player._evt=null; }
     if(player.power){ for(const [,m] of powerAlerts(player))hud.toast(m,'warn');
       window._pwT=(window._pwT||0)+dt; if(window._pwT>0.5){ window._pwT=0; syncModes(); } }
     drones.slice(1).forEach(d=>updateSoccerAI(d,dt,{drones,player,SF,diff}));
@@ -476,7 +478,7 @@ engine.start((dt,simStarted)=>{
   }
   for(const d of drones){
     d.mesh.position.copy(d.pos);
-    d.mesh.rotation.order='YXZ'; d.mesh.rotation.y=d.yaw+Math.PI; d.mesh.rotation.x=-(d.tP||0); d.mesh.rotation.z=(d.tR||0);   // 2026-11-21 擬真：機身跟著傾斜（看得出前傾／側傾）
+    d.mesh.rotation.order='YXZ'; d.mesh.rotation.y=d.yaw+Math.PI; d.mesh.rotation.x=-((d.tP||0)+(d.rollP||0)); d.mesh.rotation.z=(d.tR||0)+(d.rollR||0);   // 2026-11-21 擬真：機身跟著傾斜（看得出前傾／側傾）
     if(cageSpin&&d.mesh.userData.spin){
       d.mesh.userData.spin.rotation.x+=dt*1.1;
       d.mesh.userData.spin.rotation.z+=dt*.6;
