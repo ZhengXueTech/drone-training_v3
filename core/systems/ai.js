@@ -22,14 +22,16 @@ export const AI_DIFF={
   // v3（2026-11-17）：速度換成真實 m/s 後，舊的 0.6～1.5 倍差距太大（困難一場被進近百球），收斂成下面這組
   // dbl（2026-11-19 老師選「依難度不同」）：false＝一守門一攔截（守門員貼在球門前不撲出、支援不進球門前 1 m）；
   //   true＝困難才會門前兩台夾擊（守門員可撲出 0.9 m、支援跟到球門口）
-  easy:{spd:0.7,  gk:4.0, block:7.0,  react:1.6, align:0.8, look:0.5 ,dbl:false},
-  med: {spd:0.8,  gk:6.0, block:9.0,  react:1.3, align:0.85,look:0.3 ,dbl:false},
-  hard:{spd:0.9,  gk:9.0, block:12.0, react:1.05,align:0.95,look:0.15,dbl:true},
+  // 2026-11-28 老師：簡單還是太難 → 再降一級（速度 0.7→0.55、守門補位 4→2.8、撲擋 7→5、反應 0.5→0.8 秒、再衝冷卻 1.6→2.2）
+  easy:{spd:0.55, gk:2.8, block:5.0,  react:2.2, align:0.7, look:0.8 ,dbl:false, gm:1/1.728},
+  med: {spd:0.8,  gk:6.0, block:9.0,  react:1.3, align:0.85,look:0.3 ,dbl:false, gm:1.2/1.728},
+  hard:{spd:0.9,  gk:9.0, block:12.0, react:1.05,align:0.95,look:0.15,dbl:true, gm:1.44/1.728},
+  // gm（2026-11-28）＝AI 開幾檔（同玩家四檔倍率）：簡單一檔、中等二檔、困難三檔；隊友三檔
 }
 
 const _tgt=new THREE.Vector3();
 let _avoid=null;   // v3：我方 AI 要繞開的對象（玩家）
-const AI_ALLY={spd:1.0,gk:9.0,block:12.0,react:1.0,align:1.0,look:0.2};   // v3：你的 AI 隊友（不隨難度變）
+const AI_ALLY={spd:1.0,gk:9.0,block:12.0,react:1.0,align:1.0,look:0.2,gm:1.44/1.728};   // v3：你的 AI 隊友（不隨難度變）
 /* v3 速度換算：AI 阻力跟玩家「標準」機速一樣（每幀存速 0.93），
    舊程式的 maxSpd 數字 × AI_SPEED ＝ 真的 m/s（中等：前鋒衝刺約 3.6 m/s；玩家二檔全速約 4.9 m/s） */
 /* 2026-11-28 老師：「為什麼玩家很容易落地？電腦都不會，明明大家同狀態。」——原本 AI 直接指定垂直加速度，
@@ -38,7 +40,7 @@ const AI_ALLY={spd:1.0,gk:9.0,block:12.0,react:1.0,align:1.0,look:0.2};   // v3�
    關卡用 ctx.feel 傳玩家的機型手感；沒傳＝原本行為（pvp 等不受影響）。 */
 import { HOLD_COMP } from './soccer.js';
 const TILT_MAX=0.6, _Z={throttle:0,yaw:0,pitch:0,roll:0};
-let _feel=null;
+let _feel=null, _sf=1, _gm=1;
 const AI_DRAG_PER_SEC=Math.pow(0.93,60), AI_K=-Math.log(AI_DRAG_PER_SEC), KP=6, AI_SPEED=0.33;
 const pred=(o,t)=>_p.copy(o.pos).addScaledVector(o.vel,t);   // 預判：t 秒後會在哪
 const _p=new THREE.Vector3(), _q=new THREE.Vector3();
@@ -110,7 +112,20 @@ export function moveTo(d,tgt,dt,maxSpd){
   // 加速度＝阻力補償＋比例控制，所以 AI 真的會到達想要的速度（舊版只到 1/18，跑得很慢）
   const spd=clamp(dist*4.5,0,maxSpd*AI_SPEED);
   const vt=toT.clone().normalize().multiplyScalar(spd);
-  const wx=AI_K*vt.x+KP*(vt.x-d.vel.x), wz=AI_K*vt.z+KP*(vt.z-d.vel.z);   // 期望世界系加速度
+  let wx=AI_K*vt.x+KP*(vt.x-d.vel.x), wz=AI_K*vt.z+KP*(vt.z-d.vel.z);   // 期望世界系加速度
+  /* 2026-11-28 老師：「怎麼撞擊輸的都是玩家」——原本 AI 阻力比玩家大很多（被撞開馬上停）、水平推力沒有上限
+     （互頂時永遠推得贏）。有傳 feel 時改成跟玩家同一台機：同樣的阻力（被撞開一樣會滑）、
+     推力上限＝玩家那台機在 AI 檔位的最大推力（簡單一檔、中等二檔、困難三檔）。 */
+  if(_feel){
+    const R=_feel.real, kOld=-Math.log(_feel.drag)*60, kNew=R?1/R.tau:kOld;
+    d._dragPerSec=Math.exp(-kNew);
+    wx=kNew*vt.x+KP*(vt.x-d.vel.x); wz=kNew*vt.z+KP*(vt.z-d.vel.z);
+    const amax=P.PITCHMAX*_sf*_gm*_feel.accel*kNew/kOld, ah=Math.hypot(wx,wz);
+    if(ah>amax){ wx*=amax/ah; wz*=amax/ah; }
+    // 跟玩家一樣：撞後恢復期間（recT，resolveCollisions 設定）只剩部分控制權；機身反應有延遲（R.lag）
+    if(d.recT>0){ d.recT=Math.max(0,d.recT-dt); const auth=Math.max(0.3,1-d.recT*0.75); wx*=auth; wz*=auth; }
+    if(R){ const f=1-Math.exp(-dt/R.lag); d._wf=d._wf||[wx,wz]; d._wf[0]+=(wx-d._wf[0])*f; d._wf[1]+=(wz-d._wf[1])*f; wx=d._wf[0]; wz=d._wf[1]; }
+  }
   const wy=AI_K*vt.y+KP*(vt.y-d.vel.y);
   const ty=Math.atan2(toT.x,toT.z);                       // 機頭轉向目標
   const yd=Math.atan2(Math.sin(ty-d.yaw),Math.cos(ty-d.yaw));
@@ -130,13 +145,15 @@ export function moveTo(d,tgt,dt,maxSpd){
   d.integrate(dt, ax,ay,az,yr);
 }
 
+/* 測試／戰術板用：不跑 AI 腦袋，只設定 moveTo 要用的機型（feel）、SF、檔位倍率 */
+export function aiMachine({feel=null,SF=1,diff='med',ally=false}={}){ _feel=feel; _sf=SF; _gm=(ally?AI_ALLY:AI_DIFF[diff]).gm??1; }
 /* 足球 AI（沿基本版 updateAI；ctx={drones,player,SF,diff}） */
 export function updateSoccerAI(d,dt,ctx){
   if(d.isPlayer)return;
   const F=FIELD, {drones,player}=ctx;
   const SF=ctx.SF??1, D=d.team===TA?AI_ALLY:AI_DIFF[ctx.diff??'med'];   // v3：難度只影響對手；你的隊友固定水準
   _avoid=d.team===TA?ctx.player:null;
-  _feel=ctx.feel||null;                                   // v3：我方隊友繞開你
+  _feel=ctx.feel||null; _sf=SF; _gm=D.gm??1;                                   // v3：我方隊友繞開你
   const isA=d.team===TA;
   const attkGZ=isA?F.GZ:-F.GZ;
   const ds=isA?1:-1;
