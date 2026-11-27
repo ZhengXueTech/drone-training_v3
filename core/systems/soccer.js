@@ -205,7 +205,7 @@ export class SoccerDrone{
     this.yaw=this.team===TA?0:Math.PI; this.prevZ=this.pos.z; this.spinV=0;
     this.mustReturn=false; this.aiState='stage'; this.aiT=Math.random()*1.5;
     this.anomalyT=0; this._geArmed=false; this._frozenInput=null;   // gear 是裝備設定，不隨每球重置
-    this.tP=0; this.tR=0; this.tilt=0; this.holdY=null; this.recT=0; this.wob=[0,0]; this.rollT=0; this.netT=0; this.dropT=0; this.rollP=0; this.rollR=0;
+    this.tP=0; this.tR=0; this.tilt=0; this.holdY=null; this._xp=null; this.recT=0; this.wob=[0,0]; this.rollT=0; this.netT=0; this.dropT=0; this.rollP=0; this.rollR=0;
     this._unstickT=0; this._stuckT=0; this._stuckRef=null;   // AI 互卡脫離（core/systems/ai.js）
   }
   triggerAnomaly(dur){ _triggerAnomaly(this,dur); }
@@ -339,6 +339,7 @@ export class SoccerDrone{
     if(this.pos.z<-HL+F.BR){const v=-this.vel.z;this.pos.z=-HL+F.BR;bump(this,v);this.vel.z= Math.abs(this.vel.z)*P.WBOUNCE;if(fx)this._netHit(v,0,0,1);}
     if(this.pos.z> HL-F.BR){const v=this.vel.z;this.pos.z= HL-F.BR;bump(this,v);this.vel.z=-Math.abs(this.vel.z)*P.WBOUNCE;if(fx)this._netHit(v,0,0,-1);}
     this._ringBounce();
+    this._xp=[this.pos.x,this.pos.y,this.pos.z];   // 2026-11-28 本幀飛完、還沒被別台推開前的位置（進球判定用）
   }
   /* 球門環碰撞（沿基本版 goalRingBounce） */
   _ringBounce(){
@@ -467,10 +468,10 @@ export function goalMiss(d,{strict=false}={}){
   for(const [gz,own] of [[d.team===TA?F.GZ:-F.GZ,false],[d.team===TA?-F.GZ:F.GZ,true]]){
     const crossed=(d.prevZ-gz)*(d.pos.z-gz)<0||(d.pos.z===gz&&d.prevZ!==gz);
     if(!crossed)continue;
-    const r=Math.hypot(d.pos.x,d.pos.y-F.GY);
+    const rf=crossR(d,gz,d.pos.z>d.prevZ?1:-1), r=rf!=null?rf:Math.hypot(d.pos.x,d.pos.y-F.GY);
     if(r>F.GO+F.BR)continue;                       // 根本沒靠近球門環
     if(own)return null;                           // 自家球門交給裁判（soccer-real）
-    const lim=strict?F.GI-F.BR:F.GI, fwd=(d.pos.z-d.prevZ)*(d.team===TA?1:-1)>0;
+    const lim=strict?strictR():F.GI, fwd=(d.pos.z-d.prevZ)*(d.team===TA?1:-1)>0;
     if(d.role!=='striker')return '只有前鋒（攻擊機）穿過才算分';
     if(!fwd)return '從球門背面穿過不算，要往對方底線方向穿過';
     if(d.mustReturn)return '⚠ 回防中：進球後要先退回自家半場，這球不算';
@@ -478,13 +479,28 @@ export function goalMiss(d,{strict=false}={}){
   }
   return null;
 }
+/* 2026-11-28 老師錄影：前鋒明明從環中間穿過（回放看得到），卻跳「擦框沒進」。
+   原因：判定用的是「被別台撞開之後」的位置——在球門口互撞時，那一幀可能剛好被推到環邊（>20 cm），
+   下一幀又被球門環擋回中間，畫面看起來是穿過去了。
+   改成：本幀飛完（還沒被推開）跟被推開後兩個位置，只要有一個是往對方底線方向穿過、而且在範圍內，就算。 */
+/* 正式 FAI（整顆球穿過）的球心範圍：理論上＝內徑−球半徑＝9 cm，但球框擦到環內緣時，物理會把它擋在剛好碰到的位置
+   （球心≈9～10 cm），等於「擦內緣穿過去」反而不算——實際規則碰到環還是算整顆穿過。
+   2026-11-28 老師錄影發現 → 放寬 3.5 cm 容許擦邊（＝12.5 cm）。 */
+export const strictR=()=>FIELD.GI-FIELD.BR+0.035;
+function crossR(d,gz,dir){
+  const F=FIELD; let best=null;
+  for(const p of [[d.pos.x,d.pos.y,d.pos.z],d._xp]){
+    if(!p)continue;
+    if(!((d.prevZ-gz)*dir<0&&(p[2]-gz)*dir>=0))continue;
+    const r=Math.hypot(p[0],p[1]-F.GY); if(best==null||r<best)best=r;
+  }
+  return best;
+}
 export function checkGoal(d,{strict=false}={}){
   const F=FIELD;
   if(d.role!=='striker'||d.mustReturn)return null;
   const targZ=d.team===TA?F.GZ:-F.GZ;
   const dir=d.team===TA?1:-1;
-  if(!((d.prevZ-targZ)*dir<0&&(d.pos.z-targZ)*dir>=0))return null;
-  const dx=d.pos.x, dy=d.pos.y-F.GY;
-  const r=strict?F.GI-F.BR:F.GI;
-  return Math.sqrt(dx*dx+dy*dy)<=r ? (d.team===TA?'A':'B') : null;
+  const r=crossR(d,targZ,dir); if(r==null)return null;
+  return r<=(strict?strictR():F.GI) ? (d.team===TA?'A':'B') : null;
 }

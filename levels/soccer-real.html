@@ -489,7 +489,7 @@ engine.start((dt,simStarted)=>{
     updateReferee(dt);
     resolveCollisions(drones);
     for(const d of drones){const g=checkGoal(d,{strict:true});if(g){triggerGoal(g);window._missT=2;break;}}
-    { const why=!(typeof demo!=='undefined'&&demo)&&goalMiss(player,{strict:true}); if(why&&!(window._missT>0)){ hud.toast(why+'（按 T 可回放）','warn'); replay.mark(why.replace(/[：（].*$/,'').replace('⚠ ','')); window._missT=1.5; } if(window._missT>0)window._missT-=dt; }   // 2026-11-28 沒算分的原因
+    { const why=!(typeof demo!=='undefined'&&demo)&&goalMiss(player,{strict:true}); if(why&&!(window._missT>0)){ hud.toast(why+'（按 T 可回放）','warn'); replay.mark(why.replace('⚠ ','').replace(/：球心離圓心 (\d+) cm.*$/,' $1cm').replace(/[：（].*$/,'')); window._missT=1.5; } if(window._missT>0)window._missT-=dt; }   // 2026-11-28 沒算分的原因
     if(golden){ setTimer+=dt; }
     else{ setTimer-=dt; if(setTimer<=0){setTimer=0;endSet();} }
   }

@@ -123,6 +123,32 @@ export function updateSoccerAI(d,dt,ctx){
   const ds=isA?1:-1;
   d.aiT-=dt;
 
+  // 2026-11-27（老師：對方攻擊會跟我方防守互卡）：慢慢頂不會彈開（11/19 的擬真設定），兩台 AI 正面互推就僵在那。
+  // 真人會往旁邊錯開 → 貼著對手、兩台都幾乎沒在動超過 0.6 秒，就往「離對手的那一邊」側移 0.5 秒（前鋒順便往上抬一點）。
+  if(d._unstickT>0){
+    d._unstickT-=dt;
+    _tgt.set(clamp(d.pos.x+d._unstickDir[0]*0.6,-F.HW+F.BR*2,F.HW-F.BR*2),
+             clamp(d.pos.y+d._unstickDir[1]*0.3,F.BR+.1,F.FH-F.BR-.1),d.pos.z+d._unstickDir[2]*0.25);
+    moveTo(d,_tgt,dt,7*SF); return;
+  }
+  {
+    let foe=null;
+    for(const o of drones){ if(o===d||o.team===d.team)continue;
+      if(d.pos.distanceTo(o.pos)<F.BR*2+0.04){ foe=o; break; } }
+    // 「卡住」＝貼著對手、而且 0.6 秒內幾乎沒移動（用位移判斷，不看瞬間速度——卡在球門環邊時速度會一直被彈來彈去）
+    if(foe){ if(!d._stuckRef){ d._stuckRef=d.pos.clone(); d._stuckT=0; } d._stuckT+=dt; }
+    else { d._stuckRef=null; d._stuckT=0; }
+    if(d._stuckT>0.45&&d.pos.distanceTo(d._stuckRef)>0.15){ d._stuckRef.copy(d.pos); d._stuckT=0; }   // 有在動＝推得動，不算卡
+    if(d._stuckT>0.45){
+      d._stuckRef=null;
+      const sx=Math.abs(d.pos.x-foe.pos.x)>0.02?Math.sign(d.pos.x-foe.pos.x):(d.i%2?1:-1);
+      const sx2=Math.abs(d.pos.x+sx*0.6)>F.HW-F.BR*2?-sx:sx;      // 貼牆就往另一邊
+      d._unstickDir=[sx2, d.role==='striker'?1:0, d.team===TA?-1:1]; // 稍微往自己那側退一點，脫離接觸
+      d._unstickT=0.6; d._stuckT=0;
+      if(d.role==='striker'){ d.aiState='stage'; d.lane=sx2; d.aiT=0.3; }   // 前鋒：這波放棄，換邊重新組織（不再硬頂同一條線）
+    }
+  }
+
   // FAI：進球後退回己方半場
   if(d.mustReturn){
     _tgt.set((d.i%2-.5)*.3,1.2,isA?-.6:.6);
@@ -200,6 +226,12 @@ export function updateSoccerAI(d,dt,ctx){
       break;
     }
     case 'defender':{
+      /* 2026-11-28 老師錄影「明顯犯規」：守門員停在自家球門環裡擋（FAI B.8.4：非前鋒為了防守穿越或停留自家環＝點球）。
+         ①擋人時最近只到環面前 0.30 m（球框 11 cm＋環管 7.5 cm，不會伸進環裡）
+         ②被撞進環口（離環面 <0.25 m、在環的範圍內）→ 先往場內退出來，不留在裡面擋。 */
+      { const ownGZ=d.team===TA?-F.GZ:F.GZ, side=d.team===TA?1:-1;
+        const inRing=Math.abs(d.pos.z-ownGZ)<0.25&&Math.hypot(d.pos.x,d.pos.y-F.GY)<F.GO+F.BR;
+        if(inRing){ _tgt.set(d.pos.x,clamp(d.pos.y,F.BR+.1,F.FH-F.BR-.1),ownGZ+side*0.5); moveTo(d,_tgt,dt,6*SF); break; } }
       if(d.team===TB){   // TB 守門員：主動阻擋
         if(player.mustReturn){ giveWay(d,player,F.GZ-.5,dt,SF); break; }   // v3：玩家進球後回程，不能擋
         const distP=d.pos.distanceTo(player.pos);
@@ -208,7 +240,7 @@ export function updateSoccerAI(d,dt,ctx){
         if(distP<(D.look>0.4?0.55:D.look>0.2?0.45:0.35)&&approaching){   // v3：越難越不會衝出去亂撲，守住射門線
           _tgt.set(clamp(_p.x,-F.HW+F.BR*2,F.HW-F.BR*2),
                    clamp(_p.y,F.BR+.1,F.FH-F.BR-.1),
-                   clamp(_p.z,D.dbl?F.GZ-.9:F.GZ-.55,F.GZ-.1));   // 簡單／中等：最多離開球門 0.55 m，不撲出來
+                   clamp(_p.z,D.dbl?F.GZ-.9:F.GZ-.55,F.GZ-.3));   // 簡單／中等：最多離開球門 0.55 m，不撲出來；最近 0.3 m（不伸進環裡＝犯規）
           moveTo(d,_tgt,dt,D.block*SF);
         }else if(approaching){
           // 站在「玩家 → 球門中心」連線上、球門前 0.5 m（封住射門角度）
@@ -234,7 +266,7 @@ export function updateSoccerAI(d,dt,ctx){
           seen(d,bStr,dt,D.look,0.3);
           const ownZ=-F.GZ, lineZ=ownZ+.5;
           if(d.pos.distanceTo(bStr.pos)<0.45){
-            _tgt.set(clamp(_p.x,-F.HW+F.BR*2,F.HW-F.BR*2),clamp(_p.y,F.BR+.1,F.FH-F.BR-.1),clamp(_p.z,ownZ+.1,ownZ+.9));
+            _tgt.set(clamp(_p.x,-F.HW+F.BR*2,F.HW-F.BR*2),clamp(_p.y,F.BR+.1,F.FH-F.BR-.1),clamp(_p.z,ownZ+.3,ownZ+.9));   // 最近 0.3 m，不伸進自家環
             moveTo(d,_tgt,dt,D.block*SF); break;
           }
           const t=clamp((_p.z-lineZ)/Math.max(.01,_p.z-ownZ),0,1);
