@@ -48,6 +48,7 @@ import { buildDroneStyle } from '../core/drone-styles.js';
 import '../core/soccer-arena.js';   // 2026-10-11 足球場畫面升級（競技場外觀＋畫質選擇；物理規則不動）
 import { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField,
          resolveCollisions, checkGoal, SOCCER_FEEL } from '../core/systems/soccer.js';
+import { powerReset, powerAlerts, powerLabel } from '../core/systems/power.js';
 import { updateSoccerAI, AI_DIFF } from '../core/systems/ai.js';
 import { sfx } from '../core/audio.js';
 import { rumbleOn, setRumble } from '../core/feedback.js';
@@ -92,6 +93,7 @@ const drones=SOCCER_SEATS.map((cfg,i)=>{
   return d;
 });
 const player=drones[0];
+player.gears=4;   // 2026-11-27 四檔（每檔 +20% 疊加，四檔＝原本二檔最高速）
 
 /* ── 賽局狀態 ── */
 let phase='intro'; // intro|launch|playing|set_break|match_end|golden_intro
@@ -106,15 +108,18 @@ let setFouls=0, totalFouls=0, yellow=false, ringDwell=0, ringGrace=0;
 let attackT=0, lingerT=0, mustFouled=false, mustWarned=false;
 /* 電池（每局一顆；FAI 每局換電池） */
 let batt=100, battWarned=false;
+/* 2026-11-27 老師：機型、定高、檔位是三件不同的事（無刷≠無定高；好的有刷機也有無定高）→
+   機型只管馬達手感，定高另外開關，原本的「專家無定高」＝無刷＋定高關（舊設定自動換過來）。 */
 const SF_OPTS=[
-  {code:'slow',  label:'慢速有刷',   v:0.55,noHold:false},
-  {code:'std',   label:'標準',       v:1.0, noHold:false},
-  {code:'race',  label:'競速無刷',   v:1.8, noHold:false},
-  {code:'expert',label:'專家無定高', v:1.8, noHold:true},
+  {code:'slow',  label:'入門有刷（慢）',v:0.55,noHold:false},
+  {code:'std',   label:'有刷',          v:1.0, noHold:false},
+  {code:'race',  label:'無刷',          v:1.8, noHold:false},
 ];
+if(progress.setting('soccerSFCode','std')==='expert'){ progress.setSetting('soccerSFCode','race'); progress.setSetting('soccerHoldOff',true); }
 let sfIdx=Math.max(0,SF_OPTS.findIndex(o=>o.code===progress.setting('soccerSFCode','std')));
 let SF=SF_OPTS[sfIdx].v, noHold=SF_OPTS[sfIdx].noHold;
-let holdOff=!!progress.setting('soccerHoldOff',false); if(holdOff)noHold=true;   // 2026-10-11 開賽前可單獨關掉定高（不必選專家機速）
+let holdOff=!!progress.setting('soccerHoldOff',false); if(holdOff)noHold=true;
+let powerOn=true;   // 擬真賽規：電池與馬達溫度一律開（core/systems/power.js；局間換電池＝充滿、降溫）   // 2026-10-11 開賽前可單獨關掉定高（不必選專家機速）
 const DIFF_LABEL={easy:'😊 簡單',med:'⚡ 中等',hard:'💀 困難'};
 const ROLE_LABEL={striker:'⚽ 前鋒（可得分）',defender:'🛡 守門後衛'};
 
@@ -153,25 +158,26 @@ function cycleCam(){ camMode=CAM_MODES[(CAM_MODES.indexOf(camMode)+1)%CAM_MODES.
 function cyclePilot(){ if(camMode!=='pilot')return;
   pilotSide=PILOT_SIDES[(PILOT_SIDES.indexOf(pilotSide)+1)%PILOT_SIDES.length];
   hud.toast('站位：'+({left:'← 左',mid:'正中',right:'右 →'})[pilotSide],'ok'); }
-function syncModes(){ hud.setModes(`擬真賽規･${player.gear===2?'二檔衝':'一檔穩'}`,CAM_LABELS[camMode]); }
+const GEAR_NAME=['一','二','三','四'];
+function syncModes(){ const pw=player.power?'･'+powerLabel(player):''; hud.setModes(`擬真賽規･${GEAR_NAME[player.gear-1]}檔${pw}`,CAM_LABELS[camMode]); }
 /* 2026-08-03 新增（使用者回饋「碰撞真實感」C 項：速度檔位）——沿 soccer-match.html */
 let _prevGpY=false;
 /* 2026-10-01 挑戰條件標示（足球沿用自己的「機速」選單與 G／Y 檔位，不另加挑戰按鈕）：
    機速非「標準」或用過二檔 → 成績與左上模式框標示條件，跟其他關卡同一套欄位。 */
-let gear2Used=false;
+let gearMax=1;   // 這場用過的最高檔
 function soccerChallenge(){
   const t=[]; const c=SF_OPTS[sfIdx].code;
   if(c!=='std')t.push(SF_OPTS[sfIdx].label);
-  if(holdOff&&!SF_OPTS[sfIdx].noHold)t.push('無定高');
-  if(gear2Used||player.gear===2)t.push('二檔');
+  if(holdOff)t.push('無定高');
+  if(gearMax>1)t.push(GEAR_NAME[gearMax-1]+'檔');
   return t.join('・');
 }
-function soccerChallengeFields(){ const t=soccerChallenge(); return {challenge:t||'標準',challengeCode:`sf-${SF_OPTS[sfIdx].code}-g${(gear2Used||player.gear===2)?2:1}${holdOff&&!SF_OPTS[sfIdx].noHold?'-h0':''}`}; }
+function soccerChallengeFields(){ const t=soccerChallenge(); return {challenge:t||'標準',challengeCode:`sf-${SF_OPTS[sfIdx].code}-g${gearMax}${holdOff?'-h0':''}`}; }
 function toggleGear(){
-  player.gear=player.gear===2?1:2;
-  if(player.gear===2)gear2Used=true;
+  player.gear=player.gear%4+1;   // 一→二→三→四→一
+  gearMax=Math.max(gearMax,player.gear);
   hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
-  hud.toast('檔位：'+(player.gear===2?'二檔（衝刺，碰撞較烈）':'一檔（穩，碰撞較溫和）'),'ok');
+  hud.toast('檔位：'+GEAR_NAME[player.gear-1]+'檔'+(['（最穩）','','（快，耗電、馬達容易熱）','（最快，最耗電、最容易過熱）'][player.gear-1]),player.gear>=3?'warn':'ok');
   syncModes();
 }
 
@@ -245,6 +251,7 @@ function endSet(){
   ui.gpSetFocus(['b-next','b-back'],0);
 }
 function nextSet(){
+  powerReset(player);   // 局間：換電池＋風扇散熱
   curSet++; setGoals={A:0,B:0}; setTimer=F.SET_DUR;
   setFouls=0; yellow=false; batt=100; battWarned=false;
   ringDwell=0; attackT=0; lingerT=0; mustFouled=false; mustWarned=false;
@@ -261,7 +268,7 @@ function showGoldenIntro(){
       <p>🔋 換上最後一顆電池（16.8V ✔）</p>`,
     buttons:[{id:'b-gold',label:'進入延長賽',onClick:()=>{
       golden=true; setGoals={A:0,B:0}; setTimer=0;
-      setFouls=0; yellow=false; batt=100; battWarned=false;
+      setFouls=0; yellow=false; batt=100; battWarned=false; powerReset(player);
       ringDwell=0; attackT=0; lingerT=0; mustFouled=false; mustWarned=false;
       drones.forEach(d=>{d.reset();d.mesh.position.copy(d.pos);});
       applyRole(); ui.closeModal();
@@ -365,22 +372,22 @@ function showIntro(){   // 2026-10-11 統一開始畫面格式
       <b>得分後未退回半場即進攻</b>——都判對方點球（本關簡化為對方直接 +1，
       正式賽是前鋒單獨罰球）；同局 3 次違規＝🟨 黃牌本局停飛。</p>
       <p>🔋 每局一顆電池、局間維修換電池＋量電壓；低電量推力會衰減。</p>
-      <p>C 視角・V 站位・Z／手把十字↓ 蹲・F 保護籠旋轉・G／手把 RT 切換檔位</p>
+      <p>C 視角・V 站位・Z／手把十字↓ 蹲・F 保護籠旋轉・G／手把 RT 換檔（一→二→三→四檔循環，每檔快約 20%）</p>
       <p>🛸 碰撞不再永遠對稱彈開：衝擊夠猛時可能撞球定桿換位、門前甚至可能兩機
       一起捲入球門；起降貼地偶爾會有訊號異常（搖桿暫時打折），都是真實無人機常見現象。</p>`,
     settings:[
       {id:'role',label:'角色',value:role,options:[{v:'striker',label:ROLE_LABEL.striker},{v:'defender',label:ROLE_LABEL.defender}],
         hint:v=>v==='defender'?'得分交給 AI 前鋒，你擋在環前防守（不可進環）':'只有前鋒穿過對面球門環才得分',
         onChange:v=>{ role=v; progress.setSetting('soccerRealRole',role); showIntro(); }},
-      {id:'sf',label:'機速',value:SF_OPTS[sfIdx].code,options:SF_OPTS.map(o=>({v:o.code,label:o.label})),
-        hint:v=>({slow:'推就走、放就停，最好控制',std:'推就走、放就停',race:'放開搖桿還會往前滑、轉向更靈敏，要提早收桿',expert:'競速無刷＋沒有定高，放開油門會往下掉'})[v],
-        onChange:v=>{ sfIdx=SF_OPTS.findIndex(o=>o.code===v); SF=SF_OPTS[sfIdx].v; noHold=SF_OPTS[sfIdx].noHold||holdOff; progress.setSetting('soccerSFCode',v); showIntro(); }},
+      {id:'sf',label:'機型',value:SF_OPTS[sfIdx].code,options:SF_OPTS.map(o=>({v:o.code,label:o.label})),
+        hint:v=>({slow:'推就走、放就停，最好控制',std:'推就走、放就停',race:'推力大、速度快：放開搖桿還會往前滑、轉向更靈敏，要提早收桿'})[v],
+        onChange:v=>{ sfIdx=SF_OPTS.findIndex(o=>o.code===v); SF=SF_OPTS[sfIdx].v; noHold=holdOff; progress.setSetting('soccerSFCode',v); showIntro(); }},
       {id:'diff',label:'AI 難度',value:diff,options:Object.keys(AI_DIFF).map(k=>({v:k,label:DIFF_LABEL[k]})),
         onChange:v=>{ diff=v; progress.setSetting('soccerDiff',diff); }},
-      {id:'hold',label:'🧭 定高',value:(SF_OPTS[sfIdx].noHold||holdOff)?'0':'1',
-        options:[{v:'1',label:'開',disabled:SF_OPTS[sfIdx].noHold},{v:'0',label:'關'}],
-        hint:v=>SF_OPTS[sfIdx].noHold?'專家機速固定沒有定高':v==='0'?'放開油門會往下掉，要自己抓住懸停油門（AI 不受影響）':'放開油門會停在原本的高度',
-        onChange:v=>{ if(SF_OPTS[sfIdx].noHold)return; holdOff=v==='0'; progress.setSetting('soccerHoldOff',holdOff); noHold=holdOff; }},
+      {id:'hold',label:'🧭 定高',value:holdOff?'0':'1',
+        options:[{v:'1',label:'開'},{v:'0',label:'關'}],
+        hint:v=>v==='0'?'放開油門會往下掉，要自己抓住懸停油門；可以做出高難度滑動（AI 不受影響）':'放開油門會停在原本的高度',
+        onChange:v=>{ holdOff=v==='0'; progress.setSetting('soccerHoldOff',holdOff); noHold=holdOff; }},
     ],
     buttons:[
       {id:'b-go',label:'▶ 進場！',onClick:startMatch,primary:true},
@@ -390,7 +397,7 @@ function startMatch(){
   ui.closeModal(); sfx.play('click');
   applyRole();
   engine.simStarted=true;
-  gear2Used=(player.gear===2); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
+  gearMax=player.gear; player.power=powerOn; powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
   hud.setMission('🏆 第 1 局');
   startLaunch();
 }
@@ -435,7 +442,7 @@ engine.start((dt,simStarted)=>{
   hud.setGpBar(p.device,{keyboard:'<kbd>G</kbd>檔位',gamepad:'<kbd>{gear}</kbd>檔位',touch:''});
   /* 2026-09-30：手把 Y（b3）切檔位（原本只有鍵盤 G，手把沒有對應鍵） */
   { const pos=input.gearPos();        // 檔位指派給撥桿＝位置型；否則「檔位」鍵（預設 Y）按一下切換
-    if(pos!=null){ if((pos?2:1)!==player.gear&&phase==='playing'&&!ui.modalOpen)toggleGear(); }
+    if(pos!=null){ if(window._gearPos!=null&&pos!==window._gearPos&&phase==='playing'&&!ui.modalOpen)toggleGear(); window._gearPos=pos; }   // 撥桿每撥一次＝升一檔（四檔後回一檔）
     else{ const yNow=input.anyBtn('gear');
       if(yNow&&!_prevGpY&&phase==='playing'&&!ui.modalOpen)toggleGear(); _prevGpY=yNow; } }
   if(p.device==='gamepad'){
@@ -446,12 +453,13 @@ engine.start((dt,simStarted)=>{
   if(simStarted&&phase==='launch')updateLaunch(dt);
   if(simStarted&&phase==='playing'){
     // 電池：基礎耗電＋油門加成；低電推力衰減（教學：留電量的重要）
-    batt-=dt*(0.34+0.22*Math.abs(p.throttle));
-    if(batt<0)batt=0;
-    if(batt<15&&!battWarned){battWarned=true;hud.toast('🔋 電量低！推力開始衰減——正式賽要規劃電量','warn');}
-    const effSF=SF*(batt<=0?0.6:batt<15?0.85:1);
+    /* 2026-11-27 電池改用 core/systems/power.js（壓降＋馬達過熱，見該檔）；batt 只是顯示／測試用的百分比 */
+    const effSF=SF;
     if(yellow){ player.integrate(dt,0,0,0,0); }          // 黃牌停飛：斷油門落地
     else player.step(dt,p,effSF,noHold,SOCCER_FEEL[SF_OPTS[sfIdx].code]);
+    batt=(player.batt??1)*100;
+    if(player.power){ for(const [,m] of powerAlerts(player))hud.toast(m,'warn');
+      window._pwT=(window._pwT||0)+dt; if(window._pwT>0.5){ window._pwT=0; syncModes(); } }
     drones.slice(1).forEach(d=>updateSoccerAI(d,dt,{drones,player,SF,diff}));
     drones.forEach(d=>{
       if(!d.mustReturn)return;
@@ -503,7 +511,7 @@ window.ndTest={
   /* 規則2測試：帶著 mustReturn 待在敵方半場。判罰需「持續 vel.z>0.6」，
      阻尼會迅速吃掉單次注入的速度——測試要用 setInterval 每幀補速度模擬持續進攻 */
   stayEnemyHalf:()=>{player.mustReturn=true;player.pos.set(0,1.2,1.0);player.vel.set(0,0,0);},
-  setBatt:v=>{batt=v;}, get player(){return player;}, drones,
+  setBatt:v=>{batt=v; player.batt=v/100;}, get player(){return player;}, drones,
 };
 </script>
 </body>

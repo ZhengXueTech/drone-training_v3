@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import { rollGroundEffect, dampInput, triggerAnomaly as _triggerAnomaly } from './anomaly.js';
 import { bump } from '../feedback.js';
+import { powerStep } from './power.js';
 
 /* ── FAI F9A-B 場地常數（公尺）── */
 export const FIELD={
@@ -64,7 +65,10 @@ export function setArenaHook(h){ _arenaHook=h; }   // core/soccer-arena.js 註�
    的真實印象。二檔能不能撞贏、撞了會不會失控，完全是「二檔本來速度就
    比較快」這件事在 resolveCollisions() 依 closingSpeed 分級判定時自然帶出來
    的結果，不需要在碰撞公式裡另外疊加檔位係數，兩處只要各自對，效果就對。 */
-export const GEAR_MULT={1:0.55,2:1.0};   // 2026-09-30：一檔 0.7→0.55，兩檔差距拉大（使用者回報「G 檔感覺不出來」）
+export const GEAR_MULT={1:0.55,2:1.0};
+/* 2026-11-27 四檔（老師：實機四檔、每檔快 20%、疊加）：一檔≈原本一檔、四檔＝原本二檔（最高速不變）。
+   關卡把 drone.gears=4 才用這組；沒設＝原本兩檔（pvp 等其他關卡不受影響）。 */
+export const GEAR4_MULT={1:1/1.728,2:1.2/1.728,3:1.44/1.728,4:1};   // 2026-09-30：一檔 0.7→0.55，兩檔差距拉大（使用者回報「G 檔感覺不出來」）
 
 /* 機速手感（2026-09-30 新增，使用者回報：「競速無刷／專家只是變快，並沒有很難控制」）：
    原本四檔只把推力乘上 SF，足球物理阻力極大（每幀存速 0.87）→ 幾乎沒有慣性，
@@ -201,7 +205,8 @@ export class SoccerDrone{
     this.yaw=this.team===TA?0:Math.PI; this.prevZ=this.pos.z; this.spinV=0;
     this.mustReturn=false; this.aiState='stage'; this.aiT=Math.random()*1.5;
     this.anomalyT=0; this._geArmed=false; this._frozenInput=null;   // gear 是裝備設定，不隨每球重置
-    this.tP=0; this.tR=0; this.tilt=0; this.holdY=null;
+    this.tP=0; this.tR=0; this.tilt=0; this.holdY=null; this.recT=0; this.wob=[0,0];
+    this._unstickT=0; this._stuckT=0; this._stuckRef=null;   // AI 互卡脫離（core/systems/ai.js）
   }
   triggerAnomaly(dur){ _triggerAnomaly(this,dur); }
   /* 玩家輸入（統一語意合約：throttle+=升、yaw+=右轉、pitch+=前進、roll+=右移）
@@ -218,23 +223,29 @@ export class SoccerDrone{
     this._ctl=ctl;   // 2026-11-19 記下輸入來源 → core/feedback.js 撞擊回饋（AI 不經過 step，所以沒有）
     rollGroundEffect(this,this.pos.y-FIELD.BR,this.vel.y);
     const inp=dampInput(this,ctl,dt);
-    const GM=GEAR_MULT[this.gear]??1.0;
+    const GM=(this.gears===4?GEAR4_MULT:GEAR_MULT)[this.gear]??1.0;
+    const PM=this.power?powerStep(this,dt,inp):1;   // 2026-11-27 電池壓降＋馬達過熱（core/systems/power.js）
     const AM=feel?feel.accel:1, YM=feel?feel.yaw:1;
     this._dragPerSec=feel?Math.pow(feel.drag,60):null;
-    const ay=noHold?Math.max(0,inp.throttle)*(P.HOVER+P.THRMAX):P.HOVER+inp.throttle*P.THRMAX*SF;
+    const ay=noHold?Math.max(0,inp.throttle)*(P.HOVER+P.THRMAX)*PM:P.HOVER+inp.throttle*P.THRMAX*SF*(inp.throttle>0?PM:1);
     const R=feel&&feel.real;
     if(!R){
-      this.integrate(dt, -inp.roll*P.PITCHMAX*SF*GM*AM, ay,
-                         inp.pitch*P.PITCHMAX*SF*GM*AM, -inp.yaw*P.YAWMAX*YM);
+      this.integrate(dt, -inp.roll*P.PITCHMAX*SF*GM*AM*PM, ay,
+                         inp.pitch*P.PITCHMAX*SF*GM*AM*PM, -inp.yaw*P.YAWMAX*YM);
       return;
     }
     // ── 擬真：機身傾角追搖桿（有延遲）→ 水平推力＝sin(傾角)、垂直推力＝cos(傾角) ──
     const kOld=-Math.log(feel.drag)*60, kNew=1/R.tau;         // 換算：最高速度＝推力/阻力係數，維持原本最高速度
     this._dragPerSec=Math.exp(-kNew);
     const f=1-Math.exp(-dt/R.lag);
-    this.tP=(this.tP||0)+(inp.pitch*TILT_MAX-(this.tP||0))*f;
-    this.tR=(this.tR||0)+(-inp.roll*TILT_MAX-(this.tR||0))*f;
-    const sMax=Math.sin(TILT_MAX), H=P.PITCHMAX*SF*GM*AM*kNew/kOld/sMax;
+    /* 2026-11-27 撞後恢復（老師：撞擊後要等晶片穩定，約 1 秒上下；研究實測恢復約 0.8 秒）：
+       被撞那一刻機身被打歪（wob，0.3 秒衰減），恢復期間（recT）搖桿只剩部分控制權，越接近 1 秒越回來。 */
+    let auth=1;
+    if(this.recT>0){ this.recT=Math.max(0,this.recT-dt); auth=Math.max(0.3,1-this.recT*0.75); }
+    const wk=Math.exp(-dt/0.3), wob=this.wob||(this.wob=[0,0]); wob[0]*=wk; wob[1]*=wk;
+    this.tP=(this.tP||0)+(inp.pitch*TILT_MAX*auth+wob[0]-(this.tP||0))*f;
+    this.tR=(this.tR||0)+(-inp.roll*TILT_MAX*auth+wob[1]-(this.tR||0))*f;
+    const sMax=Math.sin(TILT_MAX), H=P.PITCHMAX*SF*GM*AM*PM*kNew/kOld/sMax;
     const ax=Math.sin(this.tR)*H, az=Math.sin(this.tP)*H;
     const yr=-inp.yaw*P.YAWMAX*YM;
     const vh=Math.hypot(this.vel.x,this.vel.z);
@@ -360,6 +371,10 @@ export function resolveCollisions(drones){
         // 球框有彈性：衝撞時再多給兩邊一個往外彈的力（接近速度 × 0.45 × 衝撞程度²），慢慢頂不會有
         const push=closing*0.45*hard*hard;
         if(onset){ bump(a,closing,'drone'); bump(b,closing,'drone'); }
+        if(onset&&!returning&&closing>0.8){   // 2026-11-27 撞後恢復（玩家機 step() 用；AI 用 knockT）
+          const rt=Math.min(1.0,0.25+closing*0.28), wk=Math.min(0.35,closing*0.08);
+          for(const d of [a,b]){ d.recT=Math.max(d.recT||0,rt); d.wob=[(Math.random()*2-1)*wk,(Math.random()*2-1)*wk]; }
+        }
         a.vel.addScaledVector(n,jimp+push); b.vel.addScaledVector(n,-jimp-push);
         if(!returning&&onset&&closing>1.2){   // 慢慢頂不會失控（原本 0.4 m/s 就失控）
           const kt=Math.min(0.7,closing*0.12);
