@@ -205,7 +205,7 @@ export class SoccerDrone{
     this.yaw=this.team===TA?0:Math.PI; this.prevZ=this.pos.z; this.spinV=0;
     this.mustReturn=false; this.aiState='stage'; this.aiT=Math.random()*1.5;
     this.anomalyT=0; this._geArmed=false; this._frozenInput=null;   // gear 是裝備設定，不隨每球重置
-    this.tP=0; this.tR=0; this.tilt=0; this.holdY=null; this.recT=0; this.wob=[0,0]; this.rollT=0; this.netT=0; this.rollP=0; this.rollR=0;
+    this.tP=0; this.tR=0; this.tilt=0; this.holdY=null; this.recT=0; this.wob=[0,0]; this.rollT=0; this.netT=0; this.dropT=0; this.rollP=0; this.rollR=0;
     this._unstickT=0; this._stuckT=0; this._stuckRef=null;   // AI 互卡脫離（core/systems/ai.js）
   }
   triggerAnomaly(dur){ _triggerAnomaly(this,dur); }
@@ -268,32 +268,40 @@ export class SoccerDrone{
      然後操作上才是要等微停」）。只有 hitFx=true 的玩家機會發生；AI 不受影響。
      · 滾地：帶著水平速度重落地（往下 ≥2.5 m/s 且水平 ≥0.8；或直直砸下 ≥4 m/s），或剛被撞（recT）又貼地高速滑行（≥1.6 m/s）→ 在地上滾 0.6～1.4 秒，
        這段時間馬達沒辦法把它拉起來；滾完還要約半秒等機身穩定（recT）才完全回來。
-     · 卡網：撞網速度 ≥1.8 m/s 有機率卡住（越快越容易、最多 7 成），卡 0.6～1.6 秒；
+     · 卡網：撞網速度 ≥2.5 m/s 有機率卡住（越快越容易、最多 3.5 成），離地夠高時一半機率脫網後掉下去滾地，卡 0.6～1.6 秒；
        往網子的反方向拉，脫困快 2.5 倍；被別台撞開也會脫困。 */
   _floorHit(vy){
     if(this.rollT>0||this.netT>0)return;
     const vh=Math.hypot(this.vel.x,this.vel.z);
-    if((vy>=2.5&&vh>=0.8)||vy>=4||(this.recT>0&&vh>=1.6&&vy>0.2)){
+    if(this.dropT>0||(vy>=2.5&&vh>=0.8)||vy>=4||(this.recT>0&&vh>=1.6&&vy>0.2)){
+      this.dropT=0;
       this.rollT=Math.min(1.4,0.6+vy*0.15+vh*0.12); this._evt='roll';
     }
   }
   _netHit(v,nx,ny,nz){
-    if(v<1.8||this.netT>0||this.rollT>0)return;
-    if(Math.random()>Math.min(0.7,(v-1.8)/2+0.2))return;
+    if(v<2.5||this.netT>0||this.rollT>0)return;
+    if(Math.random()>Math.min(0.35,(v-2.5)/4+0.1))return;   // 2026-11-28 老師：卡網太多 → 門檻 1.8→2.5 m/s、最多 7 成→3.5 成
     this.netT=Math.min(1.6,0.6+(v-1.8)*0.4); this.netN=[nx,ny,nz]; this.netPos=this.pos.clone();
+    this.netDrop=this.pos.y>FIELD.BR+0.25&&Math.random()<0.5;   // 2026-11-28 老師：卡網有一定機率掉下來滾地 → 一半機率脫網後直接掉下去
     this.vel.set(0,0,0); this._evt='net';
   }
   /* 回傳 true＝這一幀被「滾地／卡網」接管，step() 不再做一般操控 */
   _hitState(dt,inp){
     const F=FIELD;
     if(this.netT>0){
-      if(this.pos.distanceTo(this.netPos)>0.12){ this.netT=0; return false; }   // 被撞開＝脫困
+      if(this.pos.distanceTo(this.netPos)>0.12){ this.netT=0; this.netDrop=false; return false; }   // 被撞開＝脫困
       const sy=Math.sin(this.yaw), cy=Math.cos(this.yaw), n=this.netN;
       const wx=-inp.roll*cy+inp.pitch*sy, wz=inp.roll*sy+inp.pitch*cy;          // 搖桿方向（世界座標，近似）
       const away=wx*n[0]+wz*n[2]+(n[1]?-(inp.throttle||0):0);
       this.netT-=dt*(away>0.5?2.5:1);
       this.pos.copy(this.netPos); this.vel.set(0,0,0);
-      if(this.netT<=0){ this.netT=0; this.recT=Math.max(this.recT||0,0.4); }
+      if(this.netT<=0){ this.netT=0; if(this.netDrop){ this.netDrop=false; this.dropT=1.2; this._evt='drop'; } else this.recT=Math.max(this.recT||0,0.4); }
+      return true;
+    }
+    if(this.dropT>0){   // 被撞翻：馬達暫時抓不住，往下掉；落地就變滾地（_floorHit），掉不到地就在空中恢復
+      this.dropT-=dt; this.tP*=0.9; this.tR*=0.9; this.holdY=null;
+      this.integrate(dt,0,0,0,0);   // 翻掉＝馬達抓不住，自由落下（落地即轉滾地）
+      if(this.dropT<=0){ this.dropT=0; if(!(this.rollT>0))this.recT=Math.max(this.recT||0,0.6); }
       return true;
     }
     if(this.rollT>0){
@@ -421,7 +429,9 @@ export function resolveCollisions(drones){
         if(onset){ bump(a,closing,'drone'); bump(b,closing,'drone'); }
         if(onset&&!returning&&closing>0.8){   // 2026-11-27 撞後恢復（玩家機 step() 用；AI 用 knockT）
           const rt=Math.min(1.0,0.25+closing*0.28), wk=Math.min(0.35,closing*0.08);
-          for(const d of [a,b]){ d.recT=Math.max(d.recT||0,rt); d.wob=[(Math.random()*2-1)*wk,(Math.random()*2-1)*wk]; }
+          for(const d of [a,b]){ d.recT=Math.max(d.recT||0,rt); d.wob=[(Math.random()*2-1)*wk,(Math.random()*2-1)*wk];
+            // 2026-11-28 被撞夠大力會翻掉往下掉→落地滾（老師：滾地沒出現；高速對撞應該會有）。只有 hitFx 玩家機。
+            if(d.hitFx&&closing>2.2&&!(d.rollT>0)&&!(d.netT>0)&&Math.random()<Math.min(0.55,(closing-2.2)/2.5+0.15)) d.dropT=1.2; }
         }
         a.vel.addScaledVector(n,jimp+push); b.vel.addScaledVector(n,-jimp-push);
         if(!returning&&onset&&closing>1.2){   // 慢慢頂不會失控（原本 0.4 m/s 就失控）
@@ -450,6 +460,24 @@ export function resolveCollisions(drones){
    - 正式（strict）：FAI 規定「整顆球完全穿過」＝球心距環軸 < GI−BR=0.09
      （SC4 Vol F9 2026：goal when "entire drone ball has passed through"）
    辦正式比賽請開 strict（關卡 intro 可切換）。 */
+/* 2026-11-28 沒算分的原因（老師：「碰撞後進球框有時沒算分，不確定是碰撞進入不算還是？」）——
+   只給畫面提示用，判定本身不變。玩家機穿過球門平面卻沒算分時回傳原因字串，否則 null。 */
+export function goalMiss(d,{strict=false}={}){
+  const F=FIELD;
+  for(const [gz,own] of [[d.team===TA?F.GZ:-F.GZ,false],[d.team===TA?-F.GZ:F.GZ,true]]){
+    const crossed=(d.prevZ-gz)*(d.pos.z-gz)<0||(d.pos.z===gz&&d.prevZ!==gz);
+    if(!crossed)continue;
+    const r=Math.hypot(d.pos.x,d.pos.y-F.GY);
+    if(r>F.GO+F.BR)continue;                       // 根本沒靠近球門環
+    if(own)return null;                           // 自家球門交給裁判（soccer-real）
+    const lim=strict?F.GI-F.BR:F.GI, fwd=(d.pos.z-d.prevZ)*(d.team===TA?1:-1)>0;
+    if(d.role!=='striker')return '只有前鋒（攻擊機）穿過才算分';
+    if(!fwd)return '從球門背面穿過不算，要往對方底線方向穿過';
+    if(d.mustReturn)return '⚠ 回防中：進球後要先退回自家半場，這球不算';
+    if(r>lim)return `擦框沒進：球心離圓心 ${Math.round(r*100)} cm，要在 ${Math.round(lim*100)} cm 內`+(strict?'（正式：整顆球穿過）':'');
+  }
+  return null;
+}
 export function checkGoal(d,{strict=false}={}){
   const F=FIELD;
   if(d.role!=='striker'||d.mustReturn)return null;

@@ -47,8 +47,9 @@ import { UI } from '../core/ui.js';
 import { buildDroneStyle } from '../core/drone-styles.js';
 import '../core/soccer-arena.js';   // 2026-10-11 足球場畫面升級（競技場外觀＋畫質選擇；物理規則不動）
 import { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField,
-         resolveCollisions, checkGoal, SOCCER_FEEL } from '../core/systems/soccer.js';
+         resolveCollisions, checkGoal, goalMiss, SOCCER_FEEL } from '../core/systems/soccer.js';
 import { powerReset, powerAlerts, powerLabel } from '../core/systems/power.js';
+import { Replay } from '../core/replay.js';
 import { updateSoccerAI, AI_DIFF } from '../core/systems/ai.js';
 import { sfx } from '../core/audio.js';
 import { rumbleOn, setRumble } from '../core/feedback.js';
@@ -94,6 +95,11 @@ const drones=SOCCER_SEATS.map((cfg,i)=>{
 });
 const player=drones[0];
 player.gears=4;   // 2026-11-27 四檔（每檔 +20% 疊加，四檔＝原本二檔最高速）
+/* 2026-11-28 回放最近 15 秒（多視角）：暫停選單「📼 回放」或按 T（core/replay.js） */
+const replay=new Replay({engine,input,drones,field:F,teamA:TA,focus:player,
+  label:d=>(d.team===TA?'藍':'紅')+(d.role==='striker'?'前鋒':'防守')+(d===player?'（你）':'')});
+function openReplay(){ ui.closeModal(); engine.paused=true;
+  if(!replay.open(()=>showPauseModal())){ showPauseModal(); hud.toast('還沒有可以回放的畫面（至少要飛 1 秒）','warn'); } }
 
 /* ── 賽局狀態 ── */
 let phase='intro'; // intro|launch|playing|set_break|match_end|golden_intro
@@ -104,7 +110,7 @@ let cageSpin=false, crouch=false, returnWarned=false;
 let diff=progress.setting('soccerDiff','med');
 let role=progress.setting('soccerRealRole','striker');  // striker|defender
 /* 判罰系統 */
-let setFouls=0, totalFouls=0, yellow=false, ringDwell=0, ringGrace=0;
+let setFouls=0, totalFouls=0, yellow=false, ringDwell=0, ringGrace=0, pushGrace=0;
 let attackT=0, lingerT=0, mustFouled=false, mustWarned=false;
 /* 電池（每局一顆；FAI 每局換電池） */
 let batt=100, battWarned=false;
@@ -190,6 +196,7 @@ addEventListener('keydown',e=>{
   if(e.code==='KeyF'){cageSpin=!cageSpin;hud.toast('保護籠旋轉：'+(cageSpin?'開':'關'),'ok');}
   if(e.code==='KeyG'&&phase==='playing')toggleGear();
   if(e.code==='Escape')togglePause();
+  if(e.code==='KeyT'&&engine.simStarted&&!replay.active&&phase==='playing')openReplay();
 });
 addEventListener('keyup',e=>{ if(e.code==='KeyZ')crouch=false; });
 hud.onCamButton(cycleCam);
@@ -217,6 +224,7 @@ function foul(reason){
 
 /* ── 賽制 ── */
 function triggerGoal(team){
+  replay.mark('⚽ '+(team==='A'?'藍':'紅')+'隊進球');
   if(phase!=='playing')return;
   if(golden){ showMatchEnd(team); return; }   // 黃金進球：先進球者勝
   scores[team]++; setGoals[team]++;
@@ -332,7 +340,13 @@ function updateReferee(dt){
     const ownGZ=-F.GZ;   // 玩家永遠 A 隊，自家環在 -GZ
     const rr=Math.hypot(player.pos.x,player.pos.y-F.GY);
     const inRing=rr<F.GO+F.BR&&Math.abs(player.pos.z-ownGZ)<0.30;
-    if(inRing&&ringGrace<=0){
+    /* 2026-11-28 被撞進自家球門（老師）：FAI B.8.4 罰的是「為了防守」穿越或停留；被撞進去不是故意的 →
+       撞擊恢復／滾地／卡網期間不計時，恢復後再給 1.5 秒離開（往哪邊退出都可以，但不能留在裡面擋）。 */
+    if(inRing&&(player.recT>0||player.rollT>0||player.netT>0||player.dropT>0)){
+      if(!(pushGrace>0))hud.toast('被撞進自家球門：穩住後 1.5 秒內離開就不算違規','warn');
+      pushGrace=1.5; ringDwell=0;
+    }else if(pushGrace>0){ pushGrace-=dt; if(!inRing)pushGrace=0; ringDwell=0; }
+    else if(inRing&&ringGrace<=0){
       ringDwell+=dt;
       if(ringDwell>0.7){
         foul('守門員進環／停留自家球門環防守（FAI B.8.4）');
@@ -403,6 +417,7 @@ function startMatch(){
   startLaunch();
 }
 function togglePause(){
+  if(replay.active)return;
   if(!engine.simStarted||phase==='match_end')return;
   engine.paused=!engine.paused;
   if(engine.paused)showPauseModal(); else ui.closeModal();
@@ -412,6 +427,7 @@ function showPauseModal(){
     html:`<p>第 ${curSet} 局　藍 ${setGoals.A}:${setGoals.B} 紅　剩 ${Math.ceil(setTimer)} 秒　🔋${Math.round(batt)}%</p>`,
     buttons:[
       {id:'b-resume',label:'繼續',onClick:togglePause},
+      {id:'b-replay',label:'📼 回放最近 15 秒（多視角）',onClick:openReplay},
       {id:'b-density',label:'HUD：'+DENSITY_LABELS[hud.density],
         onClick:()=>{hud.cycleDensity();showPauseModal();}},
       {id:'b-audio',label:'音效：'+(sfx.enabled?'開':'關'),
@@ -459,7 +475,7 @@ engine.start((dt,simStarted)=>{
     if(yellow){ player.integrate(dt,0,0,0,0); }          // 黃牌停飛：斷油門落地
     else player.step(dt,p,effSF,noHold,SOCCER_FEEL[SF_OPTS[sfIdx].code]);
     batt=(player.batt??1)*100;
-    if(player._evt){ hud.toast(player._evt==='net'?'🧱 卡網了！往網子的反方向拉，比較快脫困':'🌀 在地上滾…等機身穩定再起飛','warn'); player._evt=null; }
+    if(player._evt){ replay.mark(player._evt==='net'?'卡網':player._evt==='drop'?'掉網':'滾地'); hud.toast(player._evt==='net'?'🧱 卡網了！往網子的反方向拉，比較快脫困':player._evt==='drop'?'🧱 從網子上掉下去了…':'🌀 在地上滾…等機身穩定再起飛','warn'); player._evt=null; }
     if(player.power){ for(const [,m] of powerAlerts(player))hud.toast(m,'warn');
       window._pwT=(window._pwT||0)+dt; if(window._pwT>0.5){ window._pwT=0; syncModes(); } }
     drones.slice(1).forEach(d=>updateSoccerAI(d,dt,{drones,player,SF,diff}));
@@ -472,7 +488,8 @@ engine.start((dt,simStarted)=>{
     });
     updateReferee(dt);
     resolveCollisions(drones);
-    for(const d of drones){const g=checkGoal(d,{strict:true});if(g){triggerGoal(g);break;}}
+    for(const d of drones){const g=checkGoal(d,{strict:true});if(g){triggerGoal(g);window._missT=2;break;}}
+    { const why=!(typeof demo!=='undefined'&&demo)&&goalMiss(player,{strict:true}); if(why&&!(window._missT>0)){ hud.toast(why+'（按 T 可回放）','warn'); replay.mark(why.replace(/[：（].*$/,'').replace('⚠ ','')); window._missT=1.5; } if(window._missT>0)window._missT-=dt; }   // 2026-11-28 沒算分的原因
     if(golden){ setTimer+=dt; }
     else{ setTimer-=dt; if(setTimer<=0){setTimer=0;endSet();} }
   }
@@ -487,6 +504,7 @@ engine.start((dt,simStarted)=>{
   goals.forEach((g,i)=>{g.mesh.rotation.z+=dt*(i?.25:.2);
     g.light.intensity=0.3;   /* 2026-11-21：球門燈不再呼吸閃爍（看久會暈） */});
   player.mesh.visible=(camMode!=='fpv');
+  if(simStarted&&phase==='playing'&&!(typeof demo!=='undefined'&&demo))replay.record(dt,`第 ${curSet} 節　藍 ${setGoals.A}:${setGoals.B} 紅　剩 ${Math.ceil(setTimer)} 秒`);
   updateCam();
   hud.setTelemetry(player.pos.y,player.vel.length());
   hud.setProgress(progressLine());
