@@ -32,6 +32,13 @@ let _avoid=null;   // v3：我方 AI 要繞開的對象（玩家）
 const AI_ALLY={spd:1.0,gk:9.0,block:12.0,react:1.0,align:1.0,look:0.2};   // v3：你的 AI 隊友（不隨難度變）
 /* v3 速度換算：AI 阻力跟玩家「標準」機速一樣（每幀存速 0.93），
    舊程式的 maxSpd 數字 × AI_SPEED ＝ 真的 m/s（中等：前鋒衝刺約 3.6 m/s；玩家二檔全速約 4.9 m/s） */
+/* 2026-11-28 老師：「為什麼玩家很容易落地？電腦都不會，明明大家同狀態。」——原本 AI 直接指定垂直加速度，
+   等於有一顆完美定高：傾斜飛不會掉高度、被撞翻也不會掉。改成跟玩家同一台機：
+   ①傾斜掉升力＋定高慢慢拉回（同玩家機型 feel.real 的 alt／hold） ②有開「滾地與卡網」時 AI 也會被撞翻、滾地、卡網。
+   關卡用 ctx.feel 傳玩家的機型手感；沒傳＝原本行為（pvp 等不受影響）。 */
+import { HOLD_COMP } from './soccer.js';
+const TILT_MAX=0.6, _Z={throttle:0,yaw:0,pitch:0,roll:0};
+let _feel=null;
 const AI_DRAG_PER_SEC=Math.pow(0.93,60), AI_K=-Math.log(AI_DRAG_PER_SEC), KP=6, AI_SPEED=0.33;
 const pred=(o,t)=>_p.copy(o.pos).addScaledVector(o.vel,t);   // 預判：t 秒後會在哪
 const _p=new THREE.Vector3(), _q=new THREE.Vector3();
@@ -79,6 +86,7 @@ export function moveTo(d,tgt,dt,maxSpd){
     d._frozenCmd=null;
   }
   d._dragPerSec=AI_DRAG_PER_SEC;
+  if(d.hitFx&&d._hitState&&d._hitState(dt,_Z))return;   // 撞翻／滾地／卡網中：跟玩家一樣不能操控
   // v3：剛被撞到的那一小段時間（knockT，由 resolveCollisions 設定）不能操控，只能被彈著走、維持高度
   if(d.knockT>0){ d.knockT-=dt; d.integrate(dt,0,P.HOVER-d.vel.y*2,0,0); return; }
   // v3（2026-11-17 老師：我方隊友一直撞到自己的前鋒）：隊友繞開玩家——
@@ -107,7 +115,17 @@ export function moveTo(d,tgt,dt,maxSpd){
   const ty=Math.atan2(toT.x,toT.z);                       // 機頭轉向目標
   const yd=Math.atan2(Math.sin(ty-d.yaw),Math.cos(ty-d.yaw));
   const sy=Math.sin(d.yaw), cy=Math.cos(d.yaw);
-  const ax=wx*cy-wz*sy, ay=P.HOVER+wy, az=wx*sy+wz*cy, yr=yd*4.5;
+  let ay=P.HOVER+wy;
+  const R=_feel&&_feel.real;
+  if(R){   // 跟玩家同一台機：傾斜掉的升力只靠定高慢慢拉回
+    const tilt=Math.min(TILT_MAX,Math.atan2(Math.hypot(wx,wz),P.HOVER));
+    const loss=P.HOVER*(1-Math.cos(tilt))*R.alt*(R.hold?HOLD_COMP:1);
+    const dy=tgt.y-d.pos.y;
+    // 高度差大＝像玩家推油門爬升／下降；差不多了＝交給定高慢慢拉
+    const v=Math.abs(dy)>0.15||!R.hold?clamp(wy,-P.THRMAX*0.5,P.THRMAX*0.5):clamp(R.hold*dy-1.6*Math.sqrt(R.hold)*d.vel.y,-4,4);
+    ay=P.HOVER-loss+v;
+  }
+  const ax=wx*cy-wz*sy, az=wx*sy+wz*cy, yr=yd*4.5;
   if(d.anomalyT>0)d._frozenCmd=[ax,ay,az,yr];
   d.integrate(dt, ax,ay,az,yr);
 }
@@ -117,7 +135,8 @@ export function updateSoccerAI(d,dt,ctx){
   if(d.isPlayer)return;
   const F=FIELD, {drones,player}=ctx;
   const SF=ctx.SF??1, D=d.team===TA?AI_ALLY:AI_DIFF[ctx.diff??'med'];   // v3：難度只影響對手；你的隊友固定水準
-  _avoid=d.team===TA?ctx.player:null;                                   // v3：我方隊友繞開你
+  _avoid=d.team===TA?ctx.player:null;
+  _feel=ctx.feel||null;                                   // v3：我方隊友繞開你
   const isA=d.team===TA;
   const attkGZ=isA?F.GZ:-F.GZ;
   const ds=isA?1:-1;

@@ -65,6 +65,10 @@ export function setArenaHook(h){ _arenaHook=h; }   // core/soccer-arena.js 註�
    的真實印象。二檔能不能撞贏、撞了會不會失控，完全是「二檔本來速度就
    比較快」這件事在 resolveCollisions() 依 closingSpeed 分級判定時自然帶出來
    的結果，不需要在碰撞公式裡另外疊加檔位係數，兩處只要各自對，效果就對。 */
+/* 2026-11-28 老師：「玩家很容易落地」——原本定高開著時，傾斜掉的升力只靠「高度誤差」慢慢拉回，
+   無刷全速衝會往下沉約 0.7 m（幾乎貼地）。實機定高飛控會依傾角自動補油門，只會稍微沉一下。
+   定高開：只剩 35% 的掉升力（無刷全速約沉 0.25 m、有刷約 0.1 m）；定高關：全部要自己補（不變）。 */
+export const HOLD_COMP=0.35;
 export const GEAR_MULT={1:0.55,2:1.0};
 /* 2026-11-27 四檔（老師：實機四檔、每檔快 20%、疊加）：一檔≈原本一檔、四檔＝原本二檔（最高速不變）。
    關卡把 drone.gears=4 才用這組；沒設＝原本兩檔（pvp 等其他關卡不受影響）。 */
@@ -252,7 +256,7 @@ export class SoccerDrone{
     const vh=Math.hypot(this.vel.x,this.vel.z);
     const tilt=Math.min(1.2,Math.hypot(this.tP,this.tR)+R.bank*Math.abs(yr)*vh/3);   // 邊轉邊飛：額外傾斜
     const thrust=ay;                                            // 這一刻馬達總推力（定高時 ≈ 懸停推力）
-    const loss=thrust*(1-Math.cos(tilt))*R.alt;                 // 傾斜掉的垂直推力（定高只補回 1-alt）
+    const loss=thrust*(1-Math.cos(tilt))*R.alt*(!noHold&&R.hold?HOLD_COMP:1);   // 傾斜掉的垂直推力；定高開著時飛控會自動補推力（只剩 35% 會掉，再由定高拉回）
     const lift=R.lift*vh*vh*Math.cos(tilt)*Math.max(0,1-tilt/TILT_MAX);   // 速度帶來的升力：機身越平越明顯（放桿上衝）
     this.tilt=tilt;
     // 定高：油門在中間時，飛控會把高度慢慢拉回原本的高度（先掉、再回來）；推拉油門＝重新記住目前高度

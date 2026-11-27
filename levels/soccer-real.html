@@ -412,7 +412,7 @@ function startMatch(){
   ui.closeModal(); sfx.play('click');
   applyRole();
   engine.simStarted=true;
-  gearMax=player.gear; player.power=powerOn; player.hitFx=hitFx; powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
+  gearMax=player.gear; player.power=powerOn; drones.forEach(d=>d.hitFx=hitFx);   // 2026-11-28 AI 也會被撞翻、滾地、卡網 powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
   hud.setMission('🏆 第 1 局');
   startLaunch();
 }
@@ -478,7 +478,7 @@ engine.start((dt,simStarted)=>{
     if(player._evt){ replay.mark(player._evt==='net'?'卡網':player._evt==='drop'?'掉網':'滾地'); hud.toast(player._evt==='net'?'🧱 卡網了！往網子的反方向拉，比較快脫困':player._evt==='drop'?'🧱 從網子上掉下去了…':'🌀 在地上滾…等機身穩定再起飛','warn'); player._evt=null; }
     if(player.power){ for(const [,m] of powerAlerts(player))hud.toast(m,'warn');
       window._pwT=(window._pwT||0)+dt; if(window._pwT>0.5){ window._pwT=0; syncModes(); } }
-    drones.slice(1).forEach(d=>updateSoccerAI(d,dt,{drones,player,SF,diff}));
+    drones.slice(1).forEach(d=>updateSoccerAI(d,dt,{drones,player,SF,diff,feel:SOCCER_FEEL[SF_OPTS[sfIdx].code]}));   // 2026-11-28 AI 跟玩家同一台機
     drones.forEach(d=>{
       if(!d.mustReturn)return;
       if(d.team===TA?d.pos.z<-0.05:d.pos.z>0.05){
