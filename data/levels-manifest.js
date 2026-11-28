@@ -146,7 +146,7 @@ export const LEVELS=[
     hud:{battery:false,wind:false,minimap:true,telemetry:true,gpbar:true},
     metrics:[{key:'stage',label:'階段'},{key:'hits',label:'命中'},{key:'tries',label:'次數'},{key:'avgCm',label:'平均離中心(cm)'}],
     doneField:'completed', unlockAfter:null,
-    emoji:'🎯', desc:'單機練穿球門環：定點、偏位、速度、移動中四個階段；準星預測落點、落點分布看自己偏哪邊。',
+    emoji:'🎯', desc:'單機練穿球門環：定點、偏位、速度、移動中、有守門員、撞開防守六個階段；準星預測落點、落點分布看自己偏哪邊。',
     hint:'C 視角・G 換檔・R 這次重來・T 回放' },
   { id:'soccer-pvp', title:'無人機足球 PVP（1v1～3v3）', part:'C',
     file:'pages/pairing.html?activity=soccer-pvp', playFile:'levels/pvp.html',

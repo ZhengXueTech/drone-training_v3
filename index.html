@@ -7,8 +7,9 @@
 <title>NEWDRONE v3｜無人機飛行體驗</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🚁</text></svg>">
 <!-- ============================================================
-     index.html — v3 首頁（2026-11-17）
-     一個入口分三區：體驗 13 關／無人機足球／進階體驗（之後陸續從 v2 搬過來）。
+     index.html — v3 首頁（2026-11-17；2026-11-28 改成「章節」）
+     上方選單＝共用系統（球機、機庫、搖桿、排行榜、成績、證書）；
+     章節（data/chapters.js，由左往右）＝學什麼；對戰入口＝跟同學比（PVP），不算章節。
      不用登入、不用表單；成績存在這台裝置，證書在「我的證書」。
      體驗版全部關卡直接開放（不像 v2 要先過第一～十一關才開足球）。
      ============================================================ -->
@@ -69,6 +70,35 @@
   .pill{border:2px solid var(--line);border-radius:999px;padding:8px 14px;font-weight:700;font-size:15px;color:var(--sub);}
   .soon{align-self:flex-start;background:var(--card2);color:var(--sub);font-size:13px;font-weight:700;padding:5px 12px;border-radius:999px;}
   .acts{display:flex;flex-wrap:wrap;gap:10px;}
+  /* 章節列（2026-11-28） */
+  .chs{display:grid;grid-template-columns:repeat(5,minmax(170px,1fr));gap:12px;overflow-x:auto;padding:4px 2px 8px;}
+  .ch{font:inherit;text-align:left;cursor:pointer;color:var(--ink);background:var(--card2);border:2px solid var(--line);border-radius:18px;padding:14px 14px 12px;display:flex;flex-direction:column;gap:6px;min-height:150px;position:relative}
+  .ch:hover{border-color:var(--acc)}
+  .ch.on{border-color:var(--acc);box-shadow:0 0 0 3px rgba(52,211,166,.25)}
+  .ch .n{font-size:12px;font-weight:900;letter-spacing:2px;color:var(--sub)}
+  .ch .t{font-size:20px;font-weight:900}
+  .ch .d{font-size:13px;color:var(--sub);line-height:1.5;flex:1}
+  .ch .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+  .ch .bar i{display:block;height:100%;background:var(--acc)}
+  .ch .pg{font-size:12px;color:var(--sub)}
+  .ch.soon{opacity:.6;cursor:default}
+  .ch .arrow{position:absolute;right:-11px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--sub);z-index:1}
+  .chp-d{margin:0;font-size:16px;color:var(--sub);line-height:1.7}
+  .lvs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+  .lv{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-radius:16px;background:var(--card2);border:2px solid var(--line);color:var(--ink);text-decoration:none}
+  .lv:hover,.lv:focus{border-color:var(--acc)}
+  .lv.done{border-color:var(--acc)}
+  .lv .t{font-weight:900;font-size:17px}
+  .lv .d{font-size:13px;color:var(--sub);line-height:1.5}
+  .lv .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+  .lv .tag{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--sub)}
+  .lv .tag.ok{border-color:var(--acc);color:var(--acc)}
+  .lv .tag.vs{border-color:var(--acc2);color:var(--acc2)}
+  .pv{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+  .pvc{background:var(--card2);border:2px solid var(--line);border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+  .pvc .acts{justify-content:flex-start}
+  .pvc h3{margin:0;font-size:19px} .pvc p{margin:0;color:var(--sub);font-size:14px;line-height:1.6}
+  @media (max-width:700px){ .chs{grid-template-columns:repeat(5,minmax(150px,1fr))} }
 </style>
 </head>
 <body>
@@ -77,7 +107,9 @@
   <span class="v3-brand"><span class="v3-logo"></span>NEWDRONE <small style="font-weight:500;font-size:13px;color:var(--sub);letter-spacing:0">v3</small></span>
   <nav aria-label="主選單">
     <a href="pages/my-ball.html">我的球機</a>
+    <a href="pages/garage.html">機庫</a>
     <a href="pages/controller-wizard.html">搖桿設定</a>
+    <a href="pages/leaderboard.html">排行榜</a>
     <a href="pages/report.html">我的成績</a>
     <a href="pages/cert.html">我的證書</a>
     <button id="b-theme" title="切換遊戲畫面主題"></button>
@@ -87,17 +119,24 @@
 
 <section class="v3-hero">
   <h1>今天，換你當飛行員</h1>
-  <p>13 關從地面安全飛到搜救任務。手把、遙控器、鍵盤、平板都能玩，玩 3 關就能拿體驗證書。</p>
+  <p>從飛行入門到無人機足球、競速改機，一章一章往右挑戰。手把、遙控器、鍵盤、平板都能玩。</p>
   <div class="acts" style="justify-content:center;margin-top:8px">
     <a class="btn pri" id="b-start" href="levels/t01-checklist.html">開始體驗</a>
     <a class="btn sec" href="pages/my-ball.html">⚽ 選我的球機</a>
   </div>
 </section>
 
-<section class="sec" id="exp">
+<section class="sec" id="chapters">
+  <div class="card" style="gap:14px">
+    <div class="head"><div><div class="kicker">章節</div><h2>選一個章節</h2></div><span class="st">由左往右越來越進階；每一章都可以直接挑戰</span></div>
+    <div class="chs" id="chs" role="tablist"></div>
+  </div>
+</section>
+
+<section class="sec chp" id="exp" data-ch="basic">
   <div class="card">
     <div class="head">
-      <div><div class="kicker">體驗 13 關</div><h2>你的飛行路線</h2></div>
+      <div><div class="kicker">第 1 章・飛行入門</div><h2>你的飛行路線</h2></div>
       <span class="st" id="st"></span>
     </div>
     <div class="rows">
@@ -109,19 +148,33 @@
   </div>
 </section>
 
-<section class="grid2">
+<section class="sec chp" id="ch-panel" hidden>
   <div class="card">
-    <div class="kicker">無人機足球</div>
-    <h2 style="margin:0;font-size:26px;font-weight:900">3v3 足球競技場</h2>
-    <p>你當前鋒，帶著兩位 AI 隊友，把球飛進對面的球門環。環燈分紅藍兩隊，你飛的就是「我的球機」選的那顆。</p>
-    <div class="acts"><a class="btn pri sm" href="levels/soccer-match.html">開始 3v3 足球</a> <a class="btn sec sm" href="levels/soccer-aim.html">🎯 穿環特訓（初學者先練）</a></div>
+    <div class="head"><div><div class="kicker" id="chp-k"></div><h2 id="chp-t"></h2></div><span class="st" id="chp-st"></span></div>
+    <p class="chp-d" id="chp-d"></p>
+    <div class="lvs" id="chp-lvs"></div>
+    <div class="acts" id="chp-links"></div>
   </div>
-  <div class="card">
-    <div class="kicker">進階體驗</div>
-    <h2 style="margin:0;font-size:26px;font-weight:900">更多挑戰</h2>
-    <span class="soon">即將推出</span>
-    <p>基礎和進階都飛過了？下面這些會陸續搬進 v3。</p>
-    <div class="pills"><span class="pill">情境任務</span><span class="pill">改裝賽道</span><span class="pill">同學 PK</span><span class="pill">雙人足球對戰</span><span class="pill">VR 飛行</span></div>
+</section>
+
+<section class="sec" id="pvp">
+  <div class="card" style="gap:14px">
+    <div class="head"><div><div class="kicker" style="color:var(--acc2)">對戰入口（PVP）</div><h2>跟同學比</h2></div><span class="st">對戰不是另一章：用的是各章已經有的場地，換成跟人比</span></div>
+    <div class="pv">
+      <div class="pvc">
+        <h3>⚔ 同場即時對戰</h3>
+        <p>兩台以上手把／遙控器接同一台電腦，先進配對大廳分配座位。</p>
+        <div class="acts" id="pv-live"></div>
+      </div>
+      <div class="pvc">
+        <h3>🔁 輪流挑戰</h3>
+        <p>一台電腦輪流上場比分數，適合上課投影。</p>
+        <div class="acts">
+          <a class="btn sec sm" href="pages/pk-turn.html">輪流挑戰賽</a>
+          <a class="btn sec sm" href="pages/leaderboard.html">🏆 班級排行榜</a>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -131,6 +184,7 @@
 import { LEVELS } from './data/levels-manifest.js';
 import { progress } from './data/progress.js';
 import { SITE_THEMES, siteTheme, setSiteTheme, applySiteTheme } from './core/v3-site.js';
+import { CHAPTERS, PVP_OF } from './data/chapters.js';
 
 applySiteTheme();
 try{ progress.migrateLegacy(); }catch{}
@@ -164,6 +218,44 @@ $('b-start').textContent=done('t01')?'繼續體驗：'+short(lv(next).title):'�
 const CERT_IDS=['acro-freeflight','t01','t02','t03','t04','t05','t06','t07','t08','t09','t10','t11'];
 const n13=[...BASIC,...ADV].filter(([id])=>done(id)).length, nc=CERT_IDS.filter(done).length;
 $('st').innerHTML=`已完成 ${n13} / 13・`+(nc>=3?'<a href="pages/cert.html">🏅 體驗證書已解鎖</a>':`再完成 ${3-nc} 關就能拿體驗證書`);
+
+/* ── 章節（2026-11-28）：data/chapters.js 決定有哪幾章、順序；第 1 章沿用上面的 13 關路線面板 ── */
+const CHS=CHAPTERS.filter(c=>c.enabled!==false);
+const chDone=c=>c.levels.filter(done).length;
+function chooseCh(id,focus){
+  const c=CHS.find(x=>x.id===id)||CHS[0]; try{ localStorage.setItem('nd3.chapter',c.id); }catch{}
+  document.querySelectorAll('.ch').forEach(b=>{ const on=b.dataset.id===c.id; b.classList.toggle('on',on); b.setAttribute('aria-selected',on); });
+  $('exp').hidden=c.id!=='basic'; $('ch-panel').hidden=c.id==='basic';
+  if(c.id!=='basic'){
+    $('chp-k').textContent=`第 ${c.n} 章`; $('chp-t').textContent=c.emoji+' '+c.title; $('chp-d').textContent=c.desc;
+    $('chp-st').textContent=c.soon?'即將推出':`已完成 ${chDone(c)} / ${c.levels.length}`;
+    const lvs=$('chp-lvs'); lvs.innerHTML='';
+    for(const id of c.levels){ const l=lv(id); if(!l)continue;
+      const a=document.createElement('a'); a.className='lv'+(done(id)?' done':''); a.href=l.file;
+      const pv=PVP_OF[id]&&lv(PVP_OF[id]);
+      a.innerHTML=`<span class="t">${esc(l.emoji||'')} ${esc(l.title.replace(/^情境體驗：/,''))}</span><span class="d">${esc(l.desc||'')}</span>
+        <span class="tags"><span class="tag">👤 單人</span>${(l.modes||[]).includes('pk-turn')?'<span class="tag">🔁 可輪流挑戰</span>':''}${pv?'<span class="tag vs">⚔ 可對戰</span>':''}${done(id)?'<span class="tag ok">✔ 完成</span>':''}</span>`;
+      lvs.appendChild(a); }
+    $('chp-links').innerHTML=(c.links||[]).map(k=>`<a class="btn sec sm" href="${esc(k.href)}">${esc(k.label)}</a>`).join('');
+  }
+  if(focus)(c.id==='basic'?$('exp'):$('ch-panel')).scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+{ const box=$('chs');
+  CHS.forEach((c,i)=>{ const b=document.createElement('button'); b.type='button'; b.className='ch'+(c.soon?' soon':''); b.dataset.id=c.id; b.setAttribute('role','tab');
+    const n=c.levels.length, d=chDone(c);
+    b.innerHTML=`<span class="n">第 ${c.n} 章</span><span class="t">${c.emoji} ${esc(c.title)}</span><span class="d">${esc(c.desc)}</span>`
+      +(c.soon?'<span class="pg">即將推出</span>':`<span class="bar"><i style="width:${n?Math.round(d/n*100):0}%"></i></span><span class="pg">${d} / ${n} 關</span>`)
+      +(i<CHS.length-1?'<span class="arrow" aria-hidden="true">›</span>':'');
+    b.addEventListener('click',()=>chooseCh(c.id,true));
+    box.appendChild(b); });
+  let saved=null; try{ saved=localStorage.getItem('nd3.chapter'); }catch{}
+  chooseCh(CHS.some(c=>c.id===saved)?saved:'basic',false);
+}
+/* 對戰入口：同場即時對戰的清單（manifest 裡 modes 有 pvp／pk-live 的） */
+{ const live=LEVELS.filter(l=>(l.modes||[]).some(m=>m==='pvp'||m==='pk-live'));
+  const pri=['soccer-pvp','race-pk'];
+  live.sort((a,b)=>(pri.indexOf(b.id)>=0?1:0)-(pri.indexOf(a.id)>=0?1:0));
+  $('pv-live').innerHTML=live.map(l=>`<a class="btn ${pri.includes(l.id)?'pri':'sec'} sm" href="${esc(l.file)}">${esc((l.emoji?l.emoji+' ':'')+l.title.replace(/^情境體驗：/,'').replace(/（PK）$/,''))}</a>`).join(''); }
 
 /* 遊戲畫面主題切換 */
 function themeLabel(){ const t=siteTheme(); $('b-theme').textContent='🎨 '+(SITE_THEMES[t]||'原版畫面'); }

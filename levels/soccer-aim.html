@@ -53,7 +53,8 @@ import { buildDroneStyle } from '../core/drone-styles.js';
 import '../core/soccer-arena.js';
 /* 只用「舊版 soccer.js 也有」的名字；新功能用 SOC.xxx 有就用、沒有就退回（網站上的 core 檔還沒更新時，這關照樣打得開） */
 import * as SOC from '../core/systems/soccer.js';
-const { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField, checkGoal, SOCCER_FEEL } = SOC;
+const { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField, checkGoal, resolveCollisions, SOCCER_FEEL } = SOC;
+import { updateSoccerAI } from '../core/systems/ai.js';
 const strictR=SOC.strictR||(()=>SOC.FIELD.GI-SOC.FIELD.BR+0.035);
 let Replay=null; try{ ({Replay}=await import('../core/replay.js')); }catch(e){ console.warn('沒有 core/replay.js，回放功能先關閉',e); }
 import { sfx } from '../core/audio.js';
@@ -76,6 +77,10 @@ const player=new SoccerDrone(0);
 player.mesh=buildDroneStyle('soccer-cage',{tc:SOCCER_SEATS[0].tc,sc:SOCCER_SEATS[0].sc,isPlayer:true});
 engine.scene.add(player.mesh);
 player.gears=4;
+/* 第 5、6 階段的守門員（紅隊防守機，跟 3v3 同一套 AI） */
+const keeper=new SoccerDrone(5);
+keeper.mesh=buildDroneStyle('soccer-cage',{tc:SOCCER_SEATS[5].tc,sc:SOCCER_SEATS[5].sc,isPlayer:false});
+keeper.mesh.visible=false; engine.scene.add(keeper.mesh);
 const replay=Replay?new Replay({engine,input,drones:[player],field:F,teamA:TA,focus:player,label:()=>'你'})
   :{active:false,record(){},mark(){},open(){ return false; }};   // 沒有回放模組時的空殼
 
@@ -107,6 +112,10 @@ const STAGES=[
    starts:()=>Array(8).fill(0).map(()=>[rnd(-0.4,0.4),F.GY+rnd(-0.35,0.25),F.GZ-3.4])},
   {n:4,name:'移動中穿環',goal:'<b>60 秒</b>內從場上隨機位置出發，穿越越多越好（準星預設不給）',time:60,assist:false,
    starts:null},
+  {n:5,name:'有守門員',goal:'守門員會擋在門前（動作慢、只守中間）：<b>看準旁邊的空檔再穿</b>',tries:8,pass:4,assist:true,keeper:'easy',
+   starts:()=>Array(8).fill(0).map(()=>[rnd(-0.7,0.7),F.GY+rnd(-0.4,0.25),F.GZ-2.8])},
+  {n:6,name:'撞開防守',goal:'守門員會封住射門線：<b>直線加速撞他的側邊，把他撞開再穿</b>',tries:8,pass:3,assist:false,keeper:'med',limit:9,
+   starts:()=>Array(8).fill(0).map(()=>[rnd(-0.4,0.4),F.GY+rnd(-0.3,0.2),F.GZ-3.2])},
 ];
 const stage=()=>STAGES[stageN-1];
 const assistOn=()=>assistMode==='on'||(assistMode==='auto'&&stage().assist);
@@ -182,6 +191,8 @@ function toggleGear(){ player.gear=player.gear%4+1; gearMax=Math.max(gearMax,pla
 function place(s){
   player.reset(); player.pos.set(s[0],s[1],s[2]); player.prevZ=player.pos.z; player.vel.set(0,0,0);
   player.yaw=s[3]||0; player._xp=null; player.holdY=null;
+  const kp=!!stage().keeper; keeper.mesh.visible=kp;
+  if(kp){ keeper.reset(); keeper.pos.set(rnd(-0.15,0.15),F.GY,F.GZ-0.55); keeper.prevZ=keeper.pos.z; keeper.yaw=Math.PI; keeper.mesh.position.copy(keeper.pos); }
   updateCam(true);
 }
 function randStart(){
@@ -193,6 +204,7 @@ function startStage(){
   ui.closeModal(); sfx.play('click');
   progress.setSetting('aimStage',stageN);
   log=[]; tryI=0; dotGrp.clear(); gearMax=player.gear;
+  if(replay.clear){ replay.clear(); replay.drones=stage().keeper?[player,keeper]:[player]; }
   starts=stage().starts?stage().starts():[];
   timeLeft=stage().time||0;
   document.getElementById('aim-panel').style.display='block';
@@ -258,7 +270,7 @@ function showIntro(){
   engine.simStarted=false; phase='intro'; document.getElementById('aim-panel').style.display='none'; document.getElementById('res').style.display='none';
   ui.showModal({title:'🎯 足球穿環特訓',
     summary:'只有你一台機。<b>對準紅色球門環、穿過去</b>——一步一步練到在比賽中也穿得進。',
-    tags:['4 個階段','跟 3v3 比賽同一套物理','準星會告訴你會從哪裡穿過'],
+    tags:['6 個階段','跟 3v3 比賽同一套物理','準星會告訴你會從哪裡穿過'],
     rules:`<p>🎯 準星（預測落點）：<b style="color:#4ade80">綠＝會進</b>、<b style="color:#fbbf24">黃＝擦邊</b>、<b style="color:#f87171">紅＝會撞框</b>。前三階段預設顯示，第 4 階段預設不給。</p>
       <p>📍 每次穿過（或撞到環）都會在環上留一個點；右邊的「落點分布」會算出你平均偏哪邊。</p>
       <p>⌨ C 視角・G／手把 RT 換檔・R 這一次重來（不算次數）・T 回放・Esc 暫停</p>
@@ -326,6 +338,7 @@ engine.start((dt,simStarted)=>{
     if(st.time){ timeLeft-=dt; if(timeLeft<=0){ timeLeft=0; finishStage(); } }
     if(phase==='fly'){
       player.step(dt,p,SF_OPTS[sfIdx].v,holdOff,feel());
+      if(st.keeper){ updateSoccerAI(keeper,dt,{drones:[player,keeper],player,SF:SF_OPTS[sfIdx].v,diff:st.keeper,feel:feel()}); resolveCollisions([player,keeper]); }
       tryT+=dt;
       // 穿過球門環面（往對方底線方向）＝判定一次
       if(player.prevZ<F.GZ&&player.pos.z>=F.GZ){
@@ -334,13 +347,14 @@ engine.start((dt,simStarted)=>{
       }else if(Math.abs(player.pos.z-F.GZ)<0.32&&player.vel.z<-0.15&&tryT>0.3){   // 撞到環被彈回來（沒穿過）
         const r=Math.hypot(player.pos.x,player.pos.y-F.GY);
         if(r>F.GI-0.08&&r<F.GO+F.BR+0.05) judge('cross',{goal:null,x:player.pos.x,y:player.pos.y,bounce:true});
-      }else if(tryT>(st.time?12:7)) judge('timeout');
+      }else if(tryT>(st.time?12:(st.limit||7))) judge('timeout');
     }else{
       showT-=dt; player.step(dt,{throttle:0,yaw:0,pitch:0,roll:0},SF_OPTS[sfIdx].v,holdOff,feel());
       if(showT<=0&&phase==='show'){ document.getElementById('res').style.display='none'; nextTry(); }
     }
   }
   player.mesh.position.copy(player.pos);
+  if(keeper.mesh.visible){ keeper.mesh.position.copy(keeper.pos); keeper.mesh.rotation.order='YXZ'; keeper.mesh.rotation.y=keeper.yaw+Math.PI; }
   player.mesh.rotation.order='YXZ'; player.mesh.rotation.y=player.yaw+Math.PI; player.mesh.rotation.x=-(player.tP||0); player.mesh.rotation.z=(player.tR||0);
   goals.forEach((g,i)=>{ g.mesh.rotation.z+=dt*(i?.25:.2); g.light.intensity=0.3; });
   player.mesh.visible=camMode!=='fpv';
@@ -357,7 +371,7 @@ engine.start((dt,simStarted)=>{
 showIntro();
 addEventListener('beforeunload',()=>engine.dispose());
 window.ndDebug=()=>({phase,stageN,tryI,unlocked,log,pos:player.pos.toArray().map(v=>+v.toFixed(2))});
-window.ndTest={unlockAll:()=>{ unlocked=4; progress.setSetting('aimUnlock',4); }};
+window.ndTest={unlockAll:()=>{ unlocked=STAGES.length; progress.setSetting('aimUnlock',unlocked); }};
 </script>
 </body>
 </html>
