@@ -27,7 +27,11 @@ export class Engine{
     this.paused=false;
     this._tick=null;
     globalThis.__ndEngine=this;    // 給診斷小視窗（core/debug-overlay.js）讀，平常沒有人用
-    this._renderFn=null;           // Phase 4：分割畫面等多相機關卡可覆寫預設單相機渲染
+    this._renderFn=null;
+    /* 離開頁面（關分頁、換頁、手機切走）都釋放；beforeunload 在某些情況（返回鍵快取）不會觸發，所以也聽 pagehide。
+       從「上一頁」快取回來的頁面 3D 已經釋放了 → 直接重新載入 */
+    addEventListener('pagehide',()=>this.dispose());
+    addEventListener('pageshow',e=>{ if(e.persisted&&this._disposed)location.reload(); });           // Phase 4：分割畫面等多相機關卡可覆寫預設單相機渲染
     this._resize=()=>{
       const w=canvas.clientWidth||innerWidth, h=canvas.clientHeight||innerHeight;
       this.renderer.setSize(w,h,false);
@@ -70,9 +74,13 @@ export class Engine{
     this.scene.clear();
   }
   dispose(){
+    if(this._disposed)return; this._disposed=true;
     this.stop(); this.disposeScene();
     removeEventListener('resize',this._resize);
     removeEventListener('orientationchange',this._resize);
     this.renderer.dispose();
+    /* 2026-11-28 老師：打完 PVP 之後 Chrome 記憶體降不下來 → 離開頁面時把 WebGL 畫布整個釋放
+       （顯示卡記憶體立刻還回去，不用等 Chrome 自己回收；多人分割畫面的陰影、貼圖比較大，最明顯） */
+    try{ this.renderer.forceContextLoss(); }catch{}
   }
 }

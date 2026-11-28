@@ -118,5 +118,5 @@ export function buildCampus(){
     gate:new THREE.Vector3(gx,3,gz-1.6),
     stage:new THREE.Vector3(P(764,497)[0],0,P(764,497)[1]),
   };
-  return {group:root,obbs,spots,labels,bounds:{x:120,z:85,y:45}};
+  return {group:root,obbs,spots,labels,bounds:{x:120,z:85,y:120}};   // 高度上限 120 m＝法規 400 呎
 }

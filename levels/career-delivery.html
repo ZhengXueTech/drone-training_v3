@@ -36,9 +36,11 @@
   #frame i:nth-child(1){left:0;top:0;border-right:0;border-bottom:0}#frame i:nth-child(2){right:0;top:0;border-left:0;border-bottom:0}
   #frame i:nth-child(3){left:0;bottom:0;border-right:0;border-top:0}#frame i:nth-child(4){right:0;bottom:0;border-left:0;border-top:0}
   #frame.ok i{border-color:#4ade80}
-  #frame .lab{position:absolute;left:50%;top:-30px;transform:translateX(-50%);background:rgba(8,16,30,.82);color:#fff;font-size:14px;padding:3px 10px;border-radius:8px;white-space:nowrap}
-  #frame .bar{position:absolute;left:20%;right:20%;bottom:-16px;height:6px;background:rgba(27,40,64,.9);border-radius:3px;overflow:hidden}
+  #frame .lab{position:absolute;left:0;right:0;top:calc(100% + 14px);background:rgba(8,16,30,.85);color:#fff;font-size:14px;line-height:1.45;padding:5px 10px;border-radius:8px;text-align:left}
+  #frame .bar{position:absolute;left:0;right:0;bottom:-10px;height:6px;background:rgba(27,40,64,.9);border-radius:3px;overflow:hidden}
   #frame .bar b{display:block;height:100%;width:0;background:#4ade80}
+  #cambox{position:fixed;z-index:14;display:none;border:2px solid rgba(255,255,255,.8);border-radius:6px;pointer-events:none;box-sizing:border-box}
+  #cambox span{position:absolute;left:6px;top:4px;font-size:12px;color:#fff;background:rgba(8,16,30,.7);padding:1px 6px;border-radius:5px}
   .rv-photos{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px}
   .rv-photos figure{margin:0;text-align:center;font-size:12px}
   .rv-photos img{width:150px;border-radius:6px;border:1px solid rgba(140,190,255,.3);display:block}
@@ -49,7 +51,8 @@
 <div id="cargo-bar"><span id="cargo-txt">🎂 蛋糕 100%</span><div class="trk"><div class="fill" id="cargo-fill"></div></div>
   <div class="shake" title="晃動"><i id="shake-fill"></i></div></div>
 <div id="frame"><i></i><i></i><i></i><i></i><div class="lab" id="frame-lab"></div><div class="bar"><b id="frame-bar"></b></div></div>
-<div id="ver">NEWDRONE 職業線・外送 v1.1</div>
+<div id="cambox"><span>📷 相機畫面</span></div>
+<div id="ver">NEWDRONE 職業線・外送 v1.2</div>
 <script type="module">
 import * as THREE from 'three';
 import { Engine } from '../core/engine.js';
@@ -59,7 +62,7 @@ import { CameraRig, CAM_LABELS } from '../core/camera.js';
 import { HUD, DENSITY_LABELS } from '../core/hud.js';
 import { UI } from '../core/ui.js';
 import { buildBasicField, makeHeadingBeacon } from '../core/world.js';
-import { buildDroneStyle, DRONE_STYLES } from '../core/drone-styles.js';
+import { buildDroneStyle, DRONE_STYLES, taskDroneGet } from '../core/drone-styles.js';
 import { sfx } from '../core/audio.js';
 import { progress } from '../data/progress.js';
 import { getLevel } from '../data/levels-manifest.js';
@@ -90,7 +93,7 @@ const ch=new Challenge({levelId:LEVEL_ID,input});
 const hud=new HUD(ch.hudFeatures(LEVEL.hud));
 const ui=new UI(input);
 ch.ui=ui; ch.setHud(hud);
-const BX=22, BZ=22, BY=14;
+const BX=22, BZ=22, BY=36;   // 2026-11-28 比例標準：一層樓 3 m，最高 10 樓 30 m
 const rig=new CameraRig(engine.camera,{pilotPositions:[
   new THREE.Vector3(0,1.7,20), new THREE.Vector3(-14,1.7,18), new THREE.Vector3(16,1.7,14)]});
 buildBasicField(engine.scene,{size:BX,sky:0x16233a,skipCompassMark:true});
@@ -104,6 +107,9 @@ function block(x0,x1,z0,z1,y0,y1,color,name,solid=true){
   m.position.set((x0+x1)/2,(y0+y1)/2,(z0+z1)/2); m.castShadow=m.receiveShadow=true;
   m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry),edgeMat));
   town.add(m);
+  // 比例標準：樓高 3 m 一層，外牆畫樓層線（一眼看得出幾樓）
+  if(y0===0&&y1-y0>=5.5){ const fm=new THREE.MeshStandardMaterial({color:0xe8edf3,roughness:1});
+    for(let y=3;y<y1-0.5;y+=3){ const f=new THREE.Mesh(new THREE.BoxGeometry(x1-x0+0.06,0.12,z1-z0+0.06),fm); f.position.set((x0+x1)/2,y,(z0+z1)/2); town.add(f); } }
   if(solid)boxes.push({min:new THREE.Vector3(x0,y0,z0),max:new THREE.Vector3(x1,y1,z1),name});
   return m;
 }
@@ -121,21 +127,22 @@ function label(text,x,y,z,yaw=0,w=3.2,color='#ffe08a'){
 block(-4,4,17,21,0,4,0x8a5a3c,'店');
 label('🛵 飛快外送',0,4.6,16.9,0,4);
 // 住宅區（第一天目的地在 -12,-6 的前院）
-block(-18,-13,-12,-8,0,5,0x6f7f95,'住宅A'); block(-20,-14,-2,3,0,6,0x7d6f95,'住宅B');
-block(-8,-4,-14,-10,0,4,0x957d6f,'住宅C');
+block(-18,-13,-12,-8,0,9,0x6f7f95,'住宅A'); block(-20,-14,-2,3,0,12,0x7d6f95,'住宅B');   // 3 樓、4 樓透天
+block(-8,-4,-14,-10,0,6,0x957d6f,'住宅C');
 // 窄巷（第二天）：兩排長樓夾出 2.6 m 寬的巷子，上面有遮雨棚，盡頭封死
-block(6,10.7,-12,4,0,9,0x5d6b7a,'巷左樓'); block(13.3,18,-12,4,0,9,0x6a5d7a,'巷右樓');
-block(10.7,13.3,-12,-11.4,0,9,0x4b5566,'巷底牆');
+block(6,10.7,-12,4,0,15,0x5d6b7a,'巷左樓'); block(13.3,18,-12,4,0,15,0x6a5d7a,'巷右樓');   // 5 樓公寓夾出來的巷子
+block(10.7,13.3,-12,-11.4,0,15,0x4b5566,'巷底牆');
 { const roof=block(10.7,13.3,-12,4,3.4,3.6,0x3b6e5a,'遮雨棚');   // 半透明：跟機鏡頭在棚子上方也看得到巷子裡
   roof.material.transparent=true; roof.material.opacity=0.35; roof.material.depthWrite=false; roof.castShadow=false; }
 block(10.7,11.5,-2.5,-1.7,1.4,2.2,0xa0a8b0,'冷氣機');   // 巷子裡突出的冷氣機：要左右閃
 block(12.5,13.3,-6.5,-5.7,0.9,1.7,0xa0a8b0,'冷氣機');
-label('巷子',12,4.4,4.2,0,2.4,'#c9f2d8');
+label('巷子',12,4.6,4.2,0,2.4,'#c9f2d8');
 // 高樓（第三天）：陽台在 7 m 高
-block(-17,-11,8,14,0,12,0x47566e,'高樓');
-block(-11,-9,9.6,12.4,6.8,7.0,0x9aa6b4,'陽台');
-block(-9.1,-9,9.6,12.4,7.0,7.5,0x9aa6b4,'陽台欄杆');
-label('翠峰大樓',-14,12.6,7.9,0,3.2,'#cfe0ff');
+block(-17,-11,8,14,0,30,0x47566e,'高樓');   // 10 樓大樓；7 樓樓板在 18 m
+block(-11,-9,9.6,12.4,17.8,18.0,0x9aa6b4,'陽台');
+block(-9.1,-9,9.6,12.4,18.0,19.1,0x9aa6b4,'陽台欄杆');   // 欄杆 1.1 m（建築法規高度）
+label('翠峰大樓',-14,30.8,7.9,0,4,'#cfe0ff');
+label('7F',-10.6,20.2,9.5,0,1.4,'#f9a8d4');
 // 公園（第四天）
 const park=new THREE.Mesh(new THREE.CircleGeometry(5,40),new THREE.MeshStandardMaterial({color:0x2f6b3a,roughness:1}));
 park.rotation.x=-Math.PI/2; park.position.set(4,0.02,-16); town.add(park);
@@ -160,7 +167,7 @@ const PADS={
   shop: makePad(0,0,9,0xfacc15,null),
   house:makePad(-12,0,-5.5,0x60a5fa,'🏠 林小姐'),
   alley:makePad(12,0,-9.8,0x4ade80,null),
-  balcony:makePad(-10,7.0,11,0xf472b6,null),
+  balcony:makePad(-10,18.0,11,0xf472b6,null),
   park: makePad(4,0,-16,0xfb923c,'🌳 公園野餐'),
   gate: makePad(16.5,0,8.5,0xa78bfa,'🏢 巷口公司'),
 };
@@ -176,7 +183,7 @@ const DAYS=[
     tip:'低飛從巷口鑽進去，遮雨棚在 3.4 m，冷氣機一左一右要閃。巷子裡可以按 C 切 FPV 看得更清楚。'},
   {n:3,title:'高樓陽台',goods:'vase',stops:['balcony'],time:0,gust:true,
     from:'翠峰大樓 7 樓 陳先生',msg:['花瓶直接送到 7 樓<b>陽台</b>就好，粉紅色停機墊。','大樓旁邊風很亂，<b>降落要輕</b>，不然花瓶會碎。'],
-    tip:'先在陽台高度停穩、對準，再慢慢往下放。陣風來時不要急著猛拉。'},
+    tip:'7 樓陽台離地 18 m：先升到 20 m 左右停穩、對準，再慢慢往下放。陣風來時不要急著猛拉。'},
   {n:4,title:'午餐尖峰',goods:'lunch',stops:['gate','park','house'],time:150,
     from:'店長',msg:['中午爆單！三杯飲料，<b>巷口公司 → 公園 → 林小姐</b>。','150 秒內送完，但飲料灑了客人一樣會給負評。'],
     tip:'快和穩要平衡：直線可以快一點，快到之前提早減速。'},
@@ -195,8 +202,13 @@ let beaconOn=progress.setting('headingBeacon',true);
 let mesh=null, beacon=null;
 function rebuildMesh(){
   if(mesh)engine.scene.remove(mesh);
-  mesh=buildDroneStyle(DRONE_STYLES[styleIdx].code,{});
+  mesh=buildDroneStyle(DRONE_STYLES[styleIdx].code,{showCargo:false});
   mesh.castShadow=true;
+  if(taskDroneGet()!=='ball'){   // 比例標準：外送機＝機腹貨箱＋腳架（腳架著地，貨箱不會埋進地板）
+    const bm=new THREE.MeshStandardMaterial({color:0xf59e0b,roughness:0.6}), lm=new THREE.MeshStandardMaterial({color:0x2b2f36,roughness:0.7});
+    const box=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.1,0.24),bm); box.position.y=-0.06; mesh.add(box);
+    [[-0.17,-0.13],[0.17,-0.13],[-0.17,0.13],[0.17,0.13]].forEach(([x,z])=>{ const l=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.15,6),lm); l.position.set(x,-0.075,z); mesh.add(l); });
+    [-0.13,0.13].forEach(z=>{ const sk=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.02,0.02),lm); sk.position.set(0,-0.15,z); mesh.add(sk); }); }
   beacon=makeHeadingBeacon(); beacon.visible=beaconOn; mesh.add(beacon);
   engine.scene.add(mesh);
 }
@@ -258,36 +270,71 @@ function exitCampus(){
 }
 /* 鏡頭判定：回傳 {ok, err(0～1，越小越正), tgt} */
 const SHOT_INFO={
-  aerial:{name:'鏡頭 1：全校鳥瞰',guide:'📸 鏡頭 1：飛到校園中央上空 28 m 以上，停住不動'},
-  gate:{name:'鏡頭 2：正門',guide:'📸 鏡頭 2：在校內「面向正門」，距離 10～24 m、高度 3～12 m，停住'},
+  aerial:{name:'鏡頭 1：全校鳥瞰',guide:'📸 鏡頭 1：飛到校園中央上空約 90～110 m，相機朝下，整個校園放進畫面'},
+  gate:{name:'鏡頭 2：正門',guide:'📸 鏡頭 2：在校內「面向正門」，距離 10～24 m、高度 3～12 m，正門放在畫面中間'},
   parade:{name:'鏡頭 3：開幕隊伍跟拍',guide:'🎥 鏡頭 3：跟拍隊伍 8 秒（距離 7～16 m、高度 4～12 m，機頭對著隊伍）'},
   land:{name:'收工',guide:'🛬 三個鏡頭都拍好了，回籃球場的停機墊降落'},
 };
 function headingErr(tx,tz){ const fx=-Math.sin(drone.yaw), fz=-Math.cos(drone.yaw), dx=tx-drone.pos.x, dz=tz-drone.pos.z, l=Math.hypot(dx,dz)||1;
   return Math.acos(THREE.MathUtils.clamp((fx*dx+fz*dz)/l,-1,1)); }
+/* 空拍相機（雲台）：機頭方向＝畫面方向；鳥瞰時相機朝正下方，其他鏡頭雲台自動上下對準目標高度。
+   右上角的「相機畫面」就是這台相機即時畫出來的，拍照也是拍這一台（看到什麼就拍到什麼）。 */
+const _pv=new THREE.Vector3();
+function aimPhotoCam(k){
+  const p=drone.pos, fx=-Math.sin(drone.yaw), fz=-Math.cos(drone.yaw);
+  photoCam.position.copy(p);
+  if(k==='aerial'){ photoCam.up.set(fx,0,fz); photoCam.lookAt(p.x,0,p.z); }
+  else { photoCam.up.set(0,1,0); const t=k==='gate'?campus.spots.gate:crowdCenter(), dh=Math.max(1,Math.hypot(t.x-p.x,t.z-p.z));
+    const pit=Math.atan2((t.y||0)-p.y,dh); photoCam.lookAt(p.x+fx*Math.cos(pit),p.y+Math.sin(pit),p.z+fz*Math.cos(pit)); }
+  photoCam.updateMatrixWorld(); }
+function ndcOf(v){ _pv.copy(v).project(photoCam); return _pv; }
+let AERIAL_PTS=null;
 function shotCheck(k){
-  const p=drone.pos;
-  if(k==='aerial'){ const c=campus.spots.center, d=Math.hypot(p.x-c.x,p.z-c.z); return {ok:d<30&&p.y>=28,err:Math.min(1,d/30),tgt:c}; }
-  if(k==='gate'){ const g=campus.spots.gate, d=Math.hypot(p.x-g.x,p.z-g.z), e=headingErr(g.x,g.z);
-    return {ok:d>=10&&d<=24&&p.z<g.z-4&&p.y>=3&&p.y<=12&&e<0.31,err:Math.min(1,e/0.31),tgt:g}; }
-  if(k==='parade'){ const c=crowdCenter(), d=Math.hypot(p.x-c.x,p.z-c.z), e=headingErr(c.x,c.z);
-    return {ok:d>=7&&d<=16&&p.y>=4&&p.y<=12&&e<0.35,err:Math.min(1,e/0.35),tgt:c}; }
-  return {ok:false,err:1,tgt:PADS.court?new THREE.Vector3(PADS.court.x,0,PADS.court.z):null};
+  const p=drone.pos; aimPhotoCam(k);
+  if(k==='aerial'){
+    if(!AERIAL_PTS)AERIAL_PTS=campus.obbs.filter(o=>!/樹|柱子/.test(o.name)).map(o=>new THREE.Vector3(o.x,0,o.z));
+    let inn=0, sx=0, sz=0; for(const v of AERIAL_PTS){ const n=ndcOf(v); if(Math.abs(n.x)<0.95&&Math.abs(n.y)<0.95&&n.z<1)inn++; sx+=n.x; sz+=n.y; }
+    const frac=inn/AERIAL_PTS.length, cx=sx/AERIAL_PTS.length, cy=sz/AERIAL_PTS.length;
+    let hint='';
+    if(p.y<60)hint=`再往上飛（現在 ${Math.round(p.y)} m，大約要 90～110 m）`;
+    else if(frac<0.92){ if(Math.abs(cx)>0.18)hint=cx>0?'校園偏右了：往右移一點':'校園偏左了：往左移一點';
+      else if(Math.abs(cy)>0.18)hint=cy>0?'校園偏上了：往前移一點':'校園偏下了：往後移一點';
+      else hint='再高一點，或把機頭轉成東西向（校園長邊橫放比較放得下）'; }
+    return {ok:p.y>=60&&frac>=0.92,err:Math.min(1,Math.hypot(cx,cy)),tgt:campus.spots.center,hint:hint||`取景 OK（${Math.round(frac*100)}% 校舍在畫面內），停住不動`}; }
+  const t=k==='gate'?campus.spots.gate:crowdCenter(), d=Math.hypot(p.x-t.x,p.z-t.z), n=ndcOf(t);
+  const [dmin,dmax,ymin,ymax]=k==='gate'?[10,24,3,12]:[7,16,4,12];
+  const inView=n.z<1&&Math.abs(n.x)<0.5&&Math.abs(n.y)<0.6;
+  let hint='';
+  if(k==='gate'&&p.z>t.z-4)hint='要從校園裡面拍：飛到正門的北邊，機頭朝南';
+  else if(d<dmin)hint=`太近了，往後退（現在 ${d.toFixed(0)} m）`; else if(d>dmax)hint=`太遠了，靠近一點（現在 ${d.toFixed(0)} m）`;
+  else if(p.y<ymin)hint='飛高一點'; else if(p.y>ymax)hint='飛低一點';
+  else if(!(n.z<1)||Math.abs(n.x)>=0.5)hint=(n.z<1&&n.x<0)?'目標在畫面左邊：機頭往左轉':'目標在畫面右邊（或在背後）：機頭往右轉';
+  const ok=!hint&&inView;
+  return {ok,err:Math.min(1,Math.abs(n.x)/0.5),tgt:t,hint:hint||(ok?'取景 OK，'+(k==='parade'?'跟著隊伍保持距離':'停住不動'):'')};
 }
 let shotIdx=0, shotHold=0, shotGood=0, shotErr=0, shotA=0, shotN=0, photos=[], crowdViol=0, overCrowd=false, prevYaw=0, snapReq=null;
 const frameEl=document.getElementById('frame'), frameLab=document.getElementById('frame-lab'), frameBar=document.getElementById('frame-bar');
-const photoCam=new THREE.PerspectiveCamera(62,16/10,0.3,900);
+const photoCam=new THREE.PerspectiveCamera(66,16/10,0.3,900);   // 垂直視角 66°（一般空拍機廣角鏡頭）
+const camBox=document.getElementById('cambox');
 // 拍照：這一幀先用空拍相機畫一次存成縮圖，再畫回原本的畫面
 engine.setRenderFn((r,sc,cam)=>{
   if(snapReq){ const q=snapReq; snapReq=null; const mv=mesh.visible; mesh.visible=false;
-    const el=r.domElement, asp=el.width/el.height; photoCam.aspect=asp; photoCam.updateProjectionMatrix();
+    const el=r.domElement, asp=el.width/el.height; photoCam.aspect=asp; photoCam.updateProjectionMatrix();   // 拍照用整個畫面畫一次（縮圖比例照螢幕）
     r.render(sc,photoCam); const cv=document.createElement('canvas'); cv.width=320; cv.height=Math.round(320/asp);
     cv.getContext('2d').drawImage(el,0,0,cv.width,cv.height); q.done(cv.toDataURL('image/jpeg',0.82)); mesh.visible=mv; }
-  r.render(sc,cam); });
+  r.render(sc,cam);
+  // 右上角「相機畫面」：空拍時即時顯示相機拍到的東西（像空拍機 App）
+  if(inCampus&&playing&&day.campus&&day.shots[shotIdx]&&day.shots[shotIdx]!=='land'){
+    const el=r.domElement, W=el.clientWidth, H=el.clientHeight, w=Math.round(Math.min(360,W*0.3)), h=Math.round(w/1.6), x=W-w-14, top=96;
+    camBox.style.display='block'; camBox.style.width=w+'px'; camBox.style.height=h+'px'; camBox.style.top=top+'px'; camBox.style.right='14px';
+    Object.assign(frameEl.style,{left:x+'px',top:top+'px',width:w+'px',height:h+'px'});   // 取景框＝框住相機畫面
+    photoCam.aspect=1.6; photoCam.updateProjectionMatrix();
+    const mv=mesh.visible; mesh.visible=false;
+    r.setScissorTest(true); r.setViewport(x,H-top-h,w,h); r.setScissor(x,H-top-h,w,h); r.render(sc,photoCam);
+    r.setScissorTest(false); r.setViewport(0,0,W,H); mesh.visible=mv;
+  } else camBox.style.display='none'; });
 function takePhoto(k,score){
-  photoCam.position.copy(drone.pos);
-  const t=k==='aerial'?campus.spots.center:k==='gate'?campus.spots.gate:crowdCenter();
-  photoCam.lookAt(t.x,k==='aerial'?0:t.y,t.z);
+  aimPhotoCam(k);
   const rec={name:SHOT_INFO[k].name,score,url:null}; photos.push(rec);
   snapReq={done:u=>{ rec.url=u; }};
   events.push({x:drone.pos.x,z:drone.pos.z,type:'ok'});
@@ -309,8 +356,8 @@ function campusTick(dt){
     if(k==='parade'){ if(r.ok&&aS<T){ shotGood+=dt; shotErr+=r.err*dt; shotA+=aS*dt; shotN+=dt; } }
     else if(r.ok&&steady){ shotHold+=dt; shotErr+=r.err*dt; shotA+=aS*dt; shotN+=dt; } else { shotHold=Math.max(0,shotHold-dt*2); if(shotHold===0){ shotErr=0; shotA=0; shotN=0; } }
     const need=k==='parade'?8:2.5, prog=(k==='parade'?shotGood:shotHold)/need;
-    frameEl.style.display='block'; frameEl.classList.toggle('ok',r.ok); frameLab.textContent=info.name+(r.ok?'　✔ 取景 OK':''); frameBar.style.width=Math.min(100,prog*100)+'%';
-    hud.setGuide(info.guide); hud.setOffscreenTarget(r.tgt?new THREE.Vector3(r.tgt.x,r.tgt.y||0,r.tgt.z):null);
+    frameEl.style.display='block'; frameEl.classList.toggle('ok',r.ok); frameLab.textContent=info.name+'｜'+(r.hint||''); frameBar.style.width=Math.min(100,prog*100)+'%';
+    hud.setGuide(r.hint?('👉 '+r.hint):info.guide); hud.setOffscreenTarget(r.tgt?new THREE.Vector3(r.tgt.x,r.tgt.y||0,r.tgt.z):null);
     if(prog>=1){ const n=shotN||1, sc=Math.round(100*(0.5*Math.max(0,1-(shotA/n)/T)+0.5*(1-shotErr/n))); takePhoto(k,Math.max(40,sc));
       if(day.shots[shotIdx]==='land')hud.toast('收工！回籃球場停機墊降落','ok'); }
   }else{ frameEl.style.display='none'; hud.setGuide(info.guide); hud.setOffscreenTarget(new THREE.Vector3(PADS.court.x,0,PADS.court.z)); }
@@ -340,7 +387,7 @@ function thr(){ return JOLT_BASE*GOODS[day.goods].thr*DIFF[pDiff].thrK; }
 function curPad(){ return PADS[day.stops[stopIdx]]; }
 
 /* ── 碰撞（AABB，機體當半徑 0.32 m 的球） ── */
-const R=0.32;
+const R=0.45;   // 機體半徑（含槳）：外送機翼展約 1 m
 function collide(){
   let hit=null;
   for(const b of boxes){
@@ -393,6 +440,7 @@ function showIntro(){
       showBrief(); }});
 }
 function showBrief(){
+  playing=false; frameEl.style.display='none';
   day=DAYS[dayIdx];
   ui.showModal({title:`📱 第${day.n}天・${day.title}`,
     html:`<div class="msg"><b class="from">${day.from}</b><br>${day.msg.join('<br>')}</div>
@@ -537,7 +585,7 @@ engine.start((dt,simStarted)=>{
     ch.update(dt,drone,engine.camera);
     // 第三天：大樓旁陣風（離高樓 7 m 內、高度 3 m 以上）
     if(day.gust){
-      const nearT=drone.pos.x<-4&&drone.pos.z>3&&drone.pos.y>3;
+      const nearT=drone.pos.x<-4&&drone.pos.z>3&&drone.pos.y>8;
       gustT-=dt;
       if(nearT&&gustT<=0){ const a=Math.random()*Math.PI*2, s=DIFF[pDiff].gust*(0.6+Math.random()*0.6);
         _gust.set(Math.cos(a)*s,(Math.random()-0.5)*0.6,Math.sin(a)*s); gustT=1.6+Math.random()*1.8; hud.toast('🌬 陣風！','warn'); }
@@ -545,6 +593,7 @@ engine.start((dt,simStarted)=>{
     }
     prevVy=drone.vel.y;
     drone.update(dt,p);
+    if(inCampus){ const th=p.throttle||0; drone.pos.y=Math.min(drone.bounds.y,drone.pos.y+(th>0?th*3:th*1.2)*dt); }   // 空拍機爬升較快（約 7 m/s，接近實機）
     const hit=collide();
     tSec+=dt;
     // 晃動＝水平加速度（平滑 0.25 秒）——陣風造成的不算玩家的錯，扣分時減半
@@ -562,7 +611,7 @@ engine.start((dt,simStarted)=>{
     recT+=dt; if(recT>=0.1){ recT=0; track.push({x:drone.pos.x,z:drone.pos.z,y:drone.pos.y,a:aS,t:tSec}); }
     // 交貨：停在停機墊上（水平 0.95 m 內、貼著墊子、幾乎不動）1 秒
     let pad=null;
-    if(day.campus){ campusTick(dt); if(day.shots[shotIdx]==='land')pad=PADS.court; } else pad=curPad();
+    if(day.campus){ if(inCampus)campusTick(dt); if(day.shots[shotIdx]==='land')pad=PADS.court; } else pad=curPad();
     const onPad=!!pad&&Math.hypot(drone.pos.x-pad.x,drone.pos.z-pad.z)<pad.r&&drone.pos.y<pad.y+0.5&&drone.hSpeed()<0.5;
     landT=onPad?landT+dt:0;
     if(landT>1.0&&playing){ landT=0; day.campus?finishCampus():deliverStop(); }

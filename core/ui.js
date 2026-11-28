@@ -128,6 +128,8 @@ export class UI{
       if(hasGp)buttons=[...buttons,{id:'b-keys',label:'🎮 按鍵圖',onClick:()=>showKeys({mode:'overlay'})}];
     }
     // 暫停選單多一顆「✋ 美國手／日本手」：按一下切換，不關選單（2026-10-10）
+    if(/暫停/.test(title)){ let hasGp=false; try{ hasGp=[...(navigator.getGamepads?.()||[])].some(Boolean); }catch{}
+      if(hasGp&&!/左搖桿往右推住/.test(html))html+='<p style="font-size:12px;opacity:.78;text-align:center">🎮 搖桿上下選項目・左搖桿往右推住＝確認・往左推住＝返回</p>'; }   // 2026-11-28 遙控器沒有按鈕也能選「回首頁」
     if(/暫停/.test(title)&&!buttons.some(b=>b.id==='b-hand')){
       const hb={id:'b-hand',label:'✋ '+handLabel()+'｜按一下切換',onClick:()=>{ toggleHand(); const b=document.getElementById('b-hand'); if(b)b.textContent='✋ '+handLabel()+'｜按一下切換'; }};
       const at=buttons.findIndex(b=>navAdded.includes(b.id)||b.id==='b-keys');   // 放在「回關卡列表／回首頁」前面
@@ -229,10 +231,30 @@ export class UI{
     document.getElementById(this._focusBtns[this._focusIdx])?.click();
   }
   /* 每幀（modal 開啟時）：把 pollMenu 事件轉為焦點移動 */
+  /* 2026-11-28 老師：「按鈕有限，可以用組合鍵處理」——飛行中叫出暫停選單（裡面有回首頁）：
+       手把：SELECT＋START 一起按住 1 秒
+       遙控器（沒有按鈕）：兩支搖桿都往「下、內」扳到底（油門最低＋偏航右＋俯仰後＋翻滾左），按住 1.5 秒
+     只在沒有選單開著時有效；送出 Esc（跟鍵盤 Esc 一樣，各關卡原本的暫停流程都接得到）。 */
+  _comboTick(dt){
+    let combo=0;   // 0＝沒有、1＝手把組合鍵、2＝遙控器手勢
+    try{ if(!this._modal&&this.input.gamepads){
+      for(const gp of this.input.gamepads()){
+        const b=gp.buttons||[];
+        if(b[8]&&b[8].pressed&&b[9]&&b[9].pressed){ combo=1; break; }
+        if(this.input.gpAxis){ const t=this.input.gpAxis(gp,'throttle'), y=this.input.gpAxis(gp,'yaw'), p=this.input.gpAxis(gp,'pitch'), r=this.input.gpAxis(gp,'roll');
+          if(t<-0.85&&y>0.85&&p<-0.85&&r<-0.85){ combo=2; break; } } } } }catch{}
+    const need=combo===1?1.0:1.5;
+    if(combo&&!this._comboDone){ this._comboT=(this._comboT||0)+dt;
+      if(!this._comboEl){ const el=document.createElement('div'); el.style.cssText='position:fixed;left:50%;top:40%;transform:translateX(-50%);z-index:9999;pointer-events:none;background:rgba(8,16,30,.88);color:#fff;font:600 16px system-ui,"Microsoft JhengHei",sans-serif;padding:10px 18px;border-radius:12px;border:1px solid rgba(255,255,255,.4);display:none'; document.body.appendChild(el); this._comboEl=el; }
+      if(this._comboT>0.25){ this._comboEl.style.display='block'; this._comboEl.textContent=`⏸ 繼續按住＝暫停選單（${Math.max(0,need-this._comboT).toFixed(1)} 秒）`; }
+      if(this._comboT>=need){ this._comboDone=true; this._comboEl.style.display='none'; dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',key:'Escape'})); }
+    }else if(!combo){ this._comboT=0; this._comboDone=false; if(this._comboEl)this._comboEl.style.display='none'; }
+  }
   update(dt){
+    this._comboTick(dt||0.016);
     if(!this._modal)return;
     const m=this.input.pollMenu(dt);
-    if(keysVisible())return;      // 按鍵圖開著時選單不動（還是要輪詢，按鍵的前一幀狀態才不會過期）
+    if(keysVisible()||document.getElementById('ndx-ov'))return;      // 離線 EXE 的「程式設定」開著也不動；按鍵圖開著時選單不動（還是要輪詢，按鍵的前一幀狀態才不會過期）
     const fid=this._focusBtns[this._focusIdx];
     if(this._panel&&fid&&fid.startsWith('row-')){   // 統一開始畫面：設定列上左右＝換選項、上下＝換列、A＝下一個選項
       if(m.x)this._rowStep(fid,m.x>0?1:-1);

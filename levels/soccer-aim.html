@@ -30,7 +30,8 @@
 <body>
 <canvas id="c"></canvas>
 <div id="ver">NEWDRONE SOCCER-AIM v1.0</div>
-<div id="aim-panel"><div class="h">🎯 落點分布</div><canvas id="aim-cv" width="168" height="168"></canvas><div class="s" id="aim-st"></div></div>
+<div id="aim-panel"><div class="h">🎯 落點分布</div><canvas id="aim-cv" width="168" height="168"></canvas><div class="s" id="aim-st"></div>
+  <div id="grid-box" style="display:none"><div class="h" style="margin-top:8px">📍 九宮格命中率（累計）</div><canvas id="grid-cv" width="168" height="200"></canvas></div></div>
 <div id="res"></div>
 <script type="module">
 /* ============================================================
@@ -117,7 +118,24 @@ const STAGES=[
   {n:6,name:'撞開防守',goal:'守門員會封住射門線：<b>直線加速撞他的側邊，把他撞開再穿</b>',tries:8,pass:3,assist:false,keeper:'med',limit:9,
    starts:()=>Array(8).fill(0).map(()=>[rnd(-0.4,0.4),F.GY+rnd(-0.3,0.2),F.GZ-3.2])},
 ];
-const stage=()=>STAGES[stageN-1];
+/* ── 📍 九宮格定點練習（2026-11-28 老師：「模擬能制定每個位置點的分析更有助於練習；要抓好距離，自家門框也有阻擋視線的挑戰」）
+   位置照 FAI 6×3 場地實際距離：離對方球門 1.5／2.5／3.5 m 三排 × 左中右三路（間隔 0.9 m），編號從飛手看過去：
+     1 2 3 ＝離球門 1.5 m（離你最遠）   4 5 6 ＝ 2.5 m   7 8 9 ＝ 3.5 m（離你最近）；左＝飛手的左手邊。
+   預設用「飛手視角」：站在自己底線外面看，自家球門環會擋住一部分視線（真實比賽就是這樣）。
+   每個位置的命中率、平均偏差累計存起來（nd.settings.aimGrid），也印得出同一張圖的實體練習記錄單（pages/aim-sheet.html）。 */
+const GRID_D=[1.5,2.5,3.5], GRID_X=[0.9,0,-0.9];   // 左＝場地 +X（飛手面向 +Z，畫面右邊＝-X）
+const gridPos=n=>{ const r=Math.floor((n-1)/3), c=(n-1)%3; return [GRID_X[c],F.GY,F.GZ-GRID_D[r],0,n]; };
+let mode=progress.setting('aimMode','stages');          // stages｜grid
+let gridSel=String(progress.setting('aimGridSel','all'));  // all｜weak｜1～9
+let gridStats=progress.setting('aimGrid',{})||{};
+function gridRate(n){ const g=gridStats[n]; return g&&g.n?g.hit/g.n:null; }
+const GRID_STAGE={n:0,name:'九宮格定點',goal:'從指定的位置出發，<b>在飛手位置看</b>，對準後穿過紅色球門環',assist:false,
+  get tries(){ return gridSel==='all'?18:gridSel==='weak'?9:8; }, get pass(){ return Math.ceil(this.tries*0.5); },
+  starts:()=>{ if(gridSel==='all')return shuffle([1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7,8,9].map(gridPos));
+    if(gridSel==='weak'){ const ord=[1,2,3,4,5,6,7,8,9].sort((a,b)=>{ const ra=gridRate(a), rb=gridRate(b); return (ra==null?-1:ra)-(rb==null?-1:rb); }).slice(0,3);
+      return shuffle([...ord,...ord,...ord].map(gridPos)); }
+    return Array(8).fill(0).map(()=>gridPos(+gridSel)); }};
+const stage=()=>mode==='grid'?GRID_STAGE:STAGES[stageN-1];
 const assistOn=()=>assistMode==='on'||(assistMode==='auto'&&stage().assist);
 
 /* ── 準星（預測落點）＋落點標記 ── */
@@ -160,6 +178,7 @@ function drawPanel(){
   for(const t of log){ if(t.x==null)continue;
     g2.fillStyle='#'+t.c.toString(16).padStart(6,'0'); g2.beginPath(); g2.arc(cx-t.x*S,cy-(t.y-F.GY)*S,4,0,Math.PI*2); g2.fill(); }
   const st=stats();
+  document.getElementById('grid-box').style.display=mode==='grid'?'block':'none'; if(mode==='grid')drawGrid();
   document.getElementById('aim-st').innerHTML=st.n?`命中 <b>${st.hits}</b>／${st.n}　平均離中心 <b>${st.avg}</b> cm<br>${st.bias||'沒有明顯偏向 👍'}`:'穿過或撞到環之後，落點會出現在這裡';
 }
 function stats(){
@@ -206,9 +225,10 @@ function startStage(){
   log=[]; tryI=0; dotGrp.clear(); gearMax=player.gear;
   if(replay.clear){ replay.clear(); replay.drones=stage().keeper?[player,keeper]:[player]; }
   starts=stage().starts?stage().starts():[];
+  if(mode==='grid'&&camMode!=='pilot'){ camMode='pilot'; }   // 九宮格預設飛手視角（自家球門會擋視線，跟比賽一樣）
   timeLeft=stage().time||0;
   document.getElementById('aim-panel').style.display='block';
-  hud.setMission(`🎯 第 ${stageN} 階段：${stage().name}`);
+  hud.setMission(mode==='grid'?'📍 九宮格定點練習':`🎯 第 ${stageN} 階段：${stage().name}`);
   hud.toast(stage().goal.replace(/<[^>]+>/g,''),'ok');
   engine.simStarted=true; nextTry(true);
   drawPanel(); syncModes();
@@ -217,6 +237,7 @@ function nextTry(first){
   const st=stage();
   if(!st.time&&tryI>=st.tries){ finishStage(); return; }
   place(st.time?randStart():starts[tryI]);
+  if(mode==='grid'){ drawPanel(); const n=starts[tryI][4], r=Math.floor((n-1)/3), c=(n-1)%3; hud.toast(`📍 位置 ${n}：離球門 ${GRID_D[r]} m・${['左','中','右'][c]}路`,'ok'); }
   tryT=0; phase='fly';
   if(!first)replay.mark('第 '+(tryI+1)+' 次');
 }
@@ -230,7 +251,9 @@ function judge(kind,info){
     else if(info.bounce) msg=`撞到環被彈回來：離中心 ${cm} cm（要在 ${Math.round(lim()*100)} cm 內）`;
     else msg=ok?`✅ 進了！離中心 ${cm} cm・${spd} m/s`:r<=F.GO+F.BR?`擦框沒進：離中心 ${cm} cm（要在 ${Math.round(lim()*100)} cm 內）`:`沒對準：從環外 ${cm} cm 的地方過去`;
   }else msg='⏱ 時間到，沒有穿過環';
-  log.push({ok,x,y,c,spd}); if(x!=null)addDot(x,y,c);
+  const gp=(starts[tryI]||[])[4];
+  log.push({ok,x,y,c,spd,gp}); if(x!=null)addDot(x,y,c);
+  if(mode==='grid'&&gp){ const g=gridStats[gp]||(gridStats[gp]={n:0,hit:0,sx:0,sy:0,k:0}); g.n++; if(ok)g.hit++; if(x!=null){ g.sx+=x; g.sy+=y-F.GY; g.k++; } progress.setSetting('aimGrid',gridStats); }
   replay.mark(ok?'✅ 進':'✗ '+(kind==='timeout'?'時間到':'沒進'));
   sfx.play(ok?'finish':'warn');
   const el=document.getElementById('res'); el.style.display='block';
@@ -246,23 +269,47 @@ function finishStage(){
   if(st.time){ stars=s.hits>=10?3:s.hits>=6?2:s.hits>=3?1:0; }
   else { stars=s.hits>=st.tries-1?3:s.hits>=st.pass+1?2:s.hits>=st.pass?1:0; }
   const passed=stars>0;
-  if(passed&&stageN<STAGES.length&&unlocked<stageN+1){ unlocked=stageN+1; progress.setSetting('aimUnlock',unlocked); }
+  if(mode!=='grid'&&passed&&stageN<STAGES.length&&unlocked<stageN+1){ unlocked=stageN+1; progress.setSetting('aimUnlock',unlocked); }
   progress.record('soccer-aim',{completed:passed,score:s.hits,stars,
-    metrics:{stage:stageN,hits:s.hits,tries:s.n,avgCm:s.avg,biasX:s.mx!=null?Math.round(s.mx*100):null,biasY:s.my!=null?Math.round(s.my*100):null,rule:strict?'fai':'practice'},
+    metrics:{stage:mode==='grid'?'grid-'+gridSel:stageN,hits:s.hits,tries:s.n,avgCm:s.avg,biasX:s.mx!=null?Math.round(s.mx*100):null,biasY:s.my!=null?Math.round(s.my*100):null,rule:strict?'fai':'practice'},
     challenge:[SF_OPTS[sfIdx].code!=='std'?SF_OPTS[sfIdx].label:'',holdOff?'無定高':'',gearMax>1?GEAR_NAME[gearMax-1]+'檔':'',strict?'正式判定':''].filter(Boolean).join('・')||'標準',
-    challengeCode:`aim-s${stageN}-${SF_OPTS[sfIdx].code}-g${gearMax}${holdOff?'-h0':''}${strict?'-fai':''}`});
+    challengeCode:`aim-${mode==='grid'?'g'+gridSel:'s'+stageN}-${SF_OPTS[sfIdx].code}-g${gearMax}${holdOff?'-h0':''}${strict?'-fai':''}`});
   const tip=s.bias?`<p>💡 你的習慣：<b>${s.bias}</b>。下一輪出發前，先把機子往${s.mx>0.04?'右':s.mx<-0.04?'左':''}${s.my>0.04?'下':s.my<-0.04?'上':''}修一點再衝。</p>`:'';
   const btns=[{id:'b-again',label:'🔁 再練一次',onClick:startStage,primary:!passed}];
-  if(passed&&stageN<STAGES.length)btns.unshift({id:'b-next',label:`▶ 下一階段：${STAGES[stageN].name}`,onClick:()=>{ stageN++; startStage(); },primary:true});
+  if(mode!=='grid'&&passed&&stageN<STAGES.length)btns.unshift({id:'b-next',label:`▶ 下一階段：${STAGES[stageN].name}`,onClick:()=>{ stageN++; startStage(); },primary:true});
   btns.push({id:'b-replay',label:'📼 回放最後 15 秒',onClick:()=>{ ui.closeModal(); engine.paused=true; if(!replay.open(()=>{ engine.paused=false; finishStage(); }))finishStage(); }});
+  if(mode==='grid')btns.push({id:'b-sheet',label:'🖨 實體練習記錄單',onClick:()=>window.open('../pages/aim-sheet.html','_blank')});
   btns.push({id:'b-menu',label:'⚙ 換階段／設定',onClick:showIntro});
   btns.push({id:'b-soccer',label:'⚽ 去踢 3v3 比賽',onClick:()=>location.href='soccer-match.html'});
-  ui.showModal({title:`${['😅','⭐','⭐⭐','⭐⭐⭐'][stars]}　第 ${stageN} 階段 ${passed?'過關':'再加油'}`,
+  const gridTbl=mode==='grid'?gridRoundHTML():'';
+  ui.showModal({title:`${['😅','⭐','⭐⭐','⭐⭐⭐'][stars]}　${mode==='grid'?'九宮格定點':'第 '+stageN+' 階段'} ${passed?'過關':'再加油'}`,
     html:`<p style="text-align:center;font-size:22px">${st.time?`60 秒穿過 <b>${s.hits}</b> 次`:`命中 <b>${s.hits}</b>／${s.n}`}</p>
       <p style="text-align:center">平均離中心 ${s.avg} cm${st.time?'':`　過關要 ${st.pass} 次`}</p>${tip}
-      ${passed||st.time?'':'<p>還差一點！記得「先停下來對準，再推」。</p>'}`,
+      ${passed||st.time?'':'<p>還差一點！記得「先停下來對準，再推」。</p>'}${gridTbl}`,
     buttons:btns});
   ui.gpSetFocus(btns.map(b=>b.id),0);
+}
+
+/* 這一輪＋累計的九宮格（結算畫面）：從飛手看過去的排法（上排離球門最近） */
+function gridRoundHTML(){
+  const cell=n=>{ const t=log.filter(l=>l.gp===n), h=t.filter(l=>l.ok).length, g=gridStats[n], r=g&&g.n?Math.round(g.hit/g.n*100):null;
+    const bg=r==null?'rgba(255,255,255,.06)':r>=70?'rgba(74,222,128,.35)':r>=40?'rgba(250,204,21,.3)':'rgba(248,113,113,.32)';
+    return `<td style="background:${bg};padding:6px 8px;border:1px solid rgba(255,255,255,.15);text-align:center;line-height:1.4"><b>${n}</b><br>${t.length?`這輪 ${h}/${t.length}`:'—'}<br><small>累計 ${r==null?'—':r+'%'}</small></td>`; };
+  return `<table style="margin:8px auto;border-collapse:collapse;font-size:13px"><tr><td colspan="3" style="text-align:center;font-size:12px;opacity:.8">⬆ 對方球門（紅環）</td></tr>
+    ${[0,1,2].map(r=>`<tr>${[1,2,3].map(c=>cell(r*3+c)).join('')}<td style="font-size:12px;opacity:.75;padding-left:6px">${GRID_D[r]} m</td></tr>`).join('')}
+    <tr><td colspan="3" style="text-align:center;font-size:12px;opacity:.8">⬇ 你（飛手）站在這邊，自家球門擋在前面</td></tr></table>
+    <p style="font-size:13px">💡 綠＝命中率 70% 以上、黃＝40～70%、紅＝40% 以下。下次選「弱點加強」會自動挑最差的 3 個位置。</p>`;
+}
+function drawGrid(){
+  const c=document.getElementById('grid-cv'); if(!c)return; const g=c.getContext('2d'), W=c.width, H=c.height, cw=W/3, ch=(H-36)/3;
+  g.clearRect(0,0,W,H); g.font='12px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillStyle='#f87171'; g.fillText('⬆ 對方球門',W/2,9);
+  for(let n=1;n<=9;n++){ const r=Math.floor((n-1)/3), k=(n-1)%3, x=k*cw, y=18+r*ch, rt=gridRate(n);
+    g.fillStyle=rt==null?'#132238':rt>=0.7?'#1f6b45':rt>=0.4?'#6b5a12':'#6b1f24'; g.fillRect(x+2,y+2,cw-4,ch-4);
+    if(starts[tryI]&&starts[tryI][4]===n&&phase==='fly'){ g.strokeStyle='#ffffff'; g.lineWidth=2; g.strokeRect(x+2,y+2,cw-4,ch-4); }
+    g.fillStyle='#fff'; g.font='bold 13px sans-serif'; g.fillText(String(n),x+cw/2,y+ch/2-8);
+    g.font='11px sans-serif'; g.fillText(rt==null?'—':Math.round(rt*100)+'%',x+cw/2,y+ch/2+8); }
+  g.fillStyle='#93c5fd'; g.font='12px sans-serif'; g.fillText('⬇ 你（飛手）',W/2,H-9);
 }
 
 /* ── 開始畫面／暫停 ── */
@@ -276,6 +323,12 @@ function showIntro(){
       <p>⌨ C 視角・G／手把 RT 換檔・R 這一次重來（不算次數）・T 回放・Esc 暫停</p>
       <p>💡 訣竅：初學者先用<b>一檔＋定高</b>，停下來對準了再往前推；不要邊衝邊修方向。</p>`,
     settings:[
+      {id:'mode',label:'練習方式',value:mode,options:[{v:'stages',label:'🎯 6 個階段'},{v:'grid',label:'📍 九宮格定點'}],
+        hint:v=>v==='grid'?'照真實場地距離，從 9 個位置練；用飛手視角（自家球門會擋視線），每個位置的命中率會記下來':'一步一步練到在比賽中也穿得進',
+        onChange:v=>{ mode=v; progress.setSetting('aimMode',v); }},
+      {id:'gsel',label:'📍 位置',value:gridSel,options:[{v:'all',label:'全部輪一遍'},{v:'weak',label:'弱點加強'},...[1,2,3,4,5,6,7,8,9].map(n=>({v:String(n),label:String(n)}))],
+        hint:v=>v==='all'?'9 個位置各 2 次（共 18 次）':v==='weak'?'挑命中率最低的 3 個位置，各 3 次':`只練位置 ${v}（8 次）：離球門 ${GRID_D[Math.floor((+v-1)/3)]} m・${['左','中','右'][(+v-1)%3]}路（從飛手看）`,
+        onChange:v=>{ gridSel=v; progress.setSetting('aimGridSel',v); }},
       {id:'stage',label:'階段',value:String(stageN),options:STAGES.map(s=>({v:String(s.n),label:(s.n>unlocked?'🔒 ':'')+s.n+' '+s.name,disabled:s.n>unlocked})),
         hint:v=>STAGES[+v-1].goal.replace(/<[^>]+>/g,'')+(+v>1&&unlocked<+v?'（前一階段過關才會開放）':''),
         onChange:v=>{ if(+v<=unlocked)stageN=+v; }},
@@ -293,8 +346,9 @@ function showIntro(){
     buttons:[
       {id:'b-go',label:'▶ 開始練習',onClick:startStage,primary:true},
       {id:'b-soccer',label:'⚽ 3v3 比賽',onClick:()=>location.href='soccer-match.html'},
+      {id:'b-sheet',label:'🖨 實體練習記錄單',onClick:()=>window.open('../pages/aim-sheet.html','_blank')},
       {id:'b-back',label:'返回入口',onClick:()=>location.href='../index.html'}]});
-  ui.gpSetFocus(['b-go','b-soccer','b-back'],0);
+  ui.gpSetFocus(['b-go','b-soccer','b-sheet','b-back'],0);
 }
 function togglePause(){
   if(replay.active||!engine.simStarted||phase==='done'||phase==='intro')return;
@@ -303,7 +357,7 @@ function togglePause(){
 }
 function openReplay(){ ui.closeModal(); engine.paused=true; if(!replay.open(()=>showPause())){ showPause(); hud.toast('還沒有可以回放的畫面','warn'); } }
 function showPause(){
-  ui.showModal({title:'暫停',html:`<p>第 ${stageN} 階段：${stage().name}　命中 ${log.filter(t=>t.ok).length}／${log.length}</p>`,
+  ui.showModal({title:'暫停',html:`<p>${mode==='grid'?'九宮格定點':'第 '+stageN+' 階段：'+stage().name}　命中 ${log.filter(t=>t.ok).length}／${log.length}</p>`,
     buttons:[{id:'b-resume',label:'繼續',onClick:togglePause},
       {id:'b-replay',label:'📼 回放最近 15 秒（多視角）',onClick:openReplay},
       {id:'b-restart',label:'🔁 這一階段重來',onClick:()=>{ engine.paused=false; startStage(); }},
@@ -358,7 +412,7 @@ engine.start((dt,simStarted)=>{
   player.mesh.rotation.order='YXZ'; player.mesh.rotation.y=player.yaw+Math.PI; player.mesh.rotation.x=-(player.tP||0); player.mesh.rotation.z=(player.tR||0);
   goals.forEach((g,i)=>{ g.mesh.rotation.z+=dt*(i?.25:.2); g.light.intensity=0.3; });
   player.mesh.visible=camMode!=='fpv';
-  if(simStarted&&phase!=='intro')replay.record(dt,`第 ${stageN} 階段　第 ${Math.min(tryI+1,stage().tries||99)} 次`);
+  if(simStarted&&phase!=='intro')replay.record(dt,`${mode==='grid'?'九宮格':'第 '+stageN+' 階段'}　第 ${Math.min(tryI+1,stage().tries||99)} 次`);
   updateAim(); updateCam();
   hud.setTelemetry(player.pos.y,player.vel.length());
   const s=stats();
