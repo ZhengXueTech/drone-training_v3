@@ -51,7 +51,7 @@
 <div id="cargo-bar"><span id="cargo-txt">🎂 蛋糕 100%</span><div class="trk"><div class="fill" id="cargo-fill"></div></div>
   <div class="shake" title="晃動"><i id="shake-fill"></i></div></div>
 <div id="frame"><i></i><i></i><i></i><i></i><div class="lab" id="frame-lab"></div><div class="bar"><b id="frame-bar"></b></div></div>
-<div id="cambox"><span>📷 相機畫面</span></div>
+<div id="cambox"><span id="camlbl">📷 相機畫面</span></div>
 <div id="ver">NEWDRONE 職業線・外送 v1.2</div>
 <script type="module">
 import * as THREE from 'three';
@@ -249,8 +249,12 @@ function placeCrowd(s){ const h=crowdAt(s), yaw=Math.atan2(h.dx,h.dz);
 function crowdCenter(){ const h=crowd.userData.center; return _cp.set(h.x,1,h.z); }
 function enterCampus(){
   if(!campus){ campus=buildCampus(); engine.scene.add(campus.group);
-    SPAWN5=new THREE.Vector3(campus.spots.court.x,0.2,campus.spots.court.z+4);
-    PADS.court=makePad(SPAWN5.x,0,SPAWN5.z,0xfacc15,null,campus.group); buildCrowd(); }
+    SPAWN5=new THREE.Vector3(campus.spots.court.x+22,0.2,campus.spots.court.z+4);   // 籃球場東半邊（開幕隊伍繞西半邊，降落時不會壓到人群）
+    PADS.court=makePad(SPAWN5.x,0,SPAWN5.z,0xfacc15,null,campus.group); buildCrowd();
+    // 停機墊標示柱（從 100 m 高也找得到；半透明、不發光）＋地面大圓圈
+    const bc=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.35,60,12,1,true),new THREE.MeshBasicMaterial({color:0xfacc15,transparent:true,opacity:0.22,depthWrite:false,side:THREE.DoubleSide}));
+    bc.position.set(SPAWN5.x,30,SPAWN5.z); campus.group.add(bc); PADS.court.beacon=bc;
+    const big=new THREE.Mesh(new THREE.RingGeometry(3.6,4.0,48),new THREE.MeshBasicMaterial({color:0xfacc15,transparent:true,opacity:0.6})); big.rotation.x=-Math.PI/2; big.position.set(SPAWN5.x,0.08,SPAWN5.z); campus.group.add(big); PADS.court.big=big; }
   if(inCampus)return; inCampus=true;
   campus.group.visible=true; town.visible=false;
   const f=engine.scene.getObjectByName('field'); hiddenField=[];
@@ -275,6 +279,19 @@ const SHOT_INFO={
   parade:{name:'鏡頭 3：開幕隊伍跟拍',guide:'🎥 鏡頭 3：跟拍隊伍 8 秒（距離 7～16 m、高度 4～12 m，機頭對著隊伍）'},
   land:{name:'收工',guide:'🛬 三個鏡頭都拍好了，回籃球場的停機墊降落'},
 };
+/* 2026-11-28 老師：「空拍的最後停降要給提示！」——降落提示：停機墊在機頭的哪個方向、多遠、還要降多少、速度 */
+function landHint(pad){
+  const p=drone.pos, dx=pad.x-p.x, dz=pad.z-p.z, d=Math.hypot(dx,dz), hgt=p.y-(pad.y+0.15);
+  if(d>0.8){
+    const fx=-Math.sin(drone.yaw), fz=-Math.cos(drone.yaw), rx=Math.cos(drone.yaw), rz=-Math.sin(drone.yaw);
+    const f=(dx*fx+dz*fz)/d, r=(dx*rx+dz*rz)/d;
+    const dir=f>0.92?'正前方':f<-0.92?'正後方':Math.abs(r)>0.92?(r>0?'右邊':'左邊'):(f>0?(r>0?'右前方':'左前方'):(r>0?'右後方':'左後方'));
+    return `停機墊在你的${dir} ${d<10?d.toFixed(1):Math.round(d)} m`+(hgt>15&&d<25?'：可以邊靠近邊下降':d<4?'：慢慢移過去，到正上方再降':''); }
+  if(hgt>0.4){ const vy=-drone.vel.y;
+    if(vy>2.2&&hgt<4)return `⚠ 降太快了（${vy.toFixed(1)} m/s），油門輕一點`;
+    return `對準了！慢慢往下降（還有 ${hgt<10?hgt.toFixed(1):Math.round(hgt)} m）`; }
+  return drone.hSpeed()>0.5?'停住不要動…':'停穩…降落中';
+}
 function headingErr(tx,tz){ const fx=-Math.sin(drone.yaw), fz=-Math.cos(drone.yaw), dx=tx-drone.pos.x, dz=tz-drone.pos.z, l=Math.hypot(dx,dz)||1;
   return Math.acos(THREE.MathUtils.clamp((fx*dx+fz*dz)/l,-1,1)); }
 /* 空拍相機（雲台）：機頭方向＝畫面方向；鳥瞰時相機朝正下方，其他鏡頭雲台自動上下對準目標高度。
@@ -315,7 +332,7 @@ function shotCheck(k){
 let shotIdx=0, shotHold=0, shotGood=0, shotErr=0, shotA=0, shotN=0, photos=[], crowdViol=0, overCrowd=false, prevYaw=0, snapReq=null;
 const frameEl=document.getElementById('frame'), frameLab=document.getElementById('frame-lab'), frameBar=document.getElementById('frame-bar');
 const photoCam=new THREE.PerspectiveCamera(66,16/10,0.3,900);   // 垂直視角 66°（一般空拍機廣角鏡頭）
-const camBox=document.getElementById('cambox');
+const camBox=document.getElementById('cambox'), camLbl=document.getElementById('camlbl');
 // 拍照：這一幀先用空拍相機畫一次存成縮圖，再畫回原本的畫面
 engine.setRenderFn((r,sc,cam)=>{
   if(snapReq){ const q=snapReq; snapReq=null; const mv=mesh.visible; mesh.visible=false;
@@ -324,7 +341,8 @@ engine.setRenderFn((r,sc,cam)=>{
     cv.getContext('2d').drawImage(el,0,0,cv.width,cv.height); q.done(cv.toDataURL('image/jpeg',0.82)); mesh.visible=mv; }
   r.render(sc,cam);
   // 右上角「相機畫面」：空拍時即時顯示相機拍到的東西（像空拍機 App）
-  if(inCampus&&playing&&day.campus&&day.shots[shotIdx]&&day.shots[shotIdx]!=='land'){
+  if(inCampus&&playing&&day.campus&&day.shots[shotIdx]){
+    if(day.shots[shotIdx]==='land'){ aimPhotoCam('aerial'); camLbl.textContent='📷 下視鏡頭（找黃色停機墊）'; } else camLbl.textContent='📷 相機畫面';
     const el=r.domElement, W=el.clientWidth, H=el.clientHeight, w=Math.round(Math.min(360,W*0.3)), h=Math.round(w/1.6), x=W-w-14, top=96;
     camBox.style.display='block'; camBox.style.width=w+'px'; camBox.style.height=h+'px'; camBox.style.top=top+'px'; camBox.style.right='14px';
     Object.assign(frameEl.style,{left:x+'px',top:top+'px',width:w+'px',height:h+'px'});   // 取景框＝框住相機畫面
@@ -345,6 +363,7 @@ function campusTick(dt){
   const k=day.shots[shotIdx], T=thr();
   // 隊伍：拍到第三個鏡頭才開始進場
   if(k==='parade'||k==='land'){ crowdS+=dt*1.3; placeCrowd(crowdS); }
+  if(PADS.court.beacon){ PADS.court.beacon.visible=PADS.court.big.visible=(k==='land'); }
   // 不可以飛到人群正上方（水平 5 m 內、離地 1.5 m 以上）
   { const c=crowdCenter(), over=Math.hypot(drone.pos.x-c.x,drone.pos.z-c.z)<5&&drone.pos.y>1.5;
     if(over&&!overCrowd){ crowdViol++; integrity-=15; events.push({x:drone.pos.x,z:drone.pos.z,type:'hit'}); hud.toast('⚠ 飛到人群正上方了！真實法規不可以，請退到旁邊','warn'); sfx.play('warn'); }
@@ -360,7 +379,7 @@ function campusTick(dt){
     hud.setGuide(r.hint?('👉 '+r.hint):info.guide); hud.setOffscreenTarget(r.tgt?new THREE.Vector3(r.tgt.x,r.tgt.y||0,r.tgt.z):null);
     if(prog>=1){ const n=shotN||1, sc=Math.round(100*(0.5*Math.max(0,1-(shotA/n)/T)+0.5*(1-shotErr/n))); takePhoto(k,Math.max(40,sc));
       if(day.shots[shotIdx]==='land')hud.toast('收工！回籃球場停機墊降落','ok'); }
-  }else{ frameEl.style.display='none'; hud.setGuide(info.guide); hud.setOffscreenTarget(new THREE.Vector3(PADS.court.x,0,PADS.court.z)); }
+  }else{ frameEl.style.display='none'; hud.setGuide('🛬 '+landHint(PADS.court)); hud.setOffscreenTarget(new THREE.Vector3(PADS.court.x,0,PADS.court.z)); }
   hud.setProgress(`${Math.min(shotIdx+1,3)}/3 鏡頭`);
 }
 function finishCampus(){
@@ -625,7 +644,7 @@ engine.start((dt,simStarted)=>{
     hud.setTimer(day.time?Math.max(0,timeLeft):tSec);
     if(!day.campus){
     const nm=pad===PADS.balcony?'7 樓陽台（粉紅停機墊）':pad===PADS.alley?'巷子最裡面（低飛鑽進去）':pad===PADS.house?'林小姐家前院':pad===PADS.park?'公園野餐':'巷口公司';
-    hud.setGuide(onPad?'停穩…交貨中':`送到：${nm}`);
+    hud.setGuide(onPad?'停穩…交貨中':Math.hypot(drone.pos.x-pad.x,drone.pos.z-pad.z)<8?'🛬 '+landHint(pad):`送到：${nm}`);
     hud.setProgress(day.stops.length>1?`第 ${Math.min(stopIdx+1,day.stops.length)}/${day.stops.length} 單`:`${GOODS[day.goods].icon} ${GOODS[day.goods].name}`);
     hud.setOffscreenTarget(new THREE.Vector3(pad.x,pad.y,pad.z));
     }else if(onPad)hud.setGuide('停穩…降落中');
