@@ -49,6 +49,7 @@ import { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField,
          resolveCollisions, checkGoal, goalMiss, SOCCER_FEEL } from '../core/systems/soccer.js';
 import { powerReset, powerAlerts, powerLabel } from '../core/systems/power.js';
 import { Replay } from '../core/replay.js';
+import { Arming } from '../core/arming.js';   // 2026-11-28 起槳／停槳
 import { updateSoccerAI, AI_DIFF } from '../core/systems/ai.js';
 import { sfx } from '../core/audio.js';
 import { rumbleOn, setRumble } from '../core/feedback.js';
@@ -66,6 +67,7 @@ engine.camera.position.set(0,2.5,-5.5); engine.camera.lookAt(0,1.5,0);
 const input=new InputManager();
 const hud=new HUD(LEVEL.hud);
 const ui=new UI(input);
+const arm=new Arming({input,ui}); arm.hidden=true;
 const goals=buildSoccerField(engine.scene);
 
 /* ── 六席無人機（soccer-cage 樣式＝FAI bumper 尺度 BR=0.11） ── */
@@ -208,7 +210,7 @@ function triggerGoal(team){
 }
 function endSet(){
   if(demo){ demoNextSet(); return; }
-  phase='set_end'; sfx.play('warn');
+  phase='set_end'; sfx.play('warn'); arm.hidden=true;
   setLog.push({A:setGoals.A,B:setGoals.B});
   if(setGoals.A>setGoals.B)setsWon.A++; else if(setGoals.B>setGoals.A)setsWon.B++;
   if(setsWon.A>=2||setsWon.B>=2||curSet>=F.N_SETS){showMatchEnd();return;}
@@ -223,11 +225,11 @@ function nextSet(){
   powerReset(player);   // 局間：換電池＋風扇散熱
   curSet++; setGoals={A:0,B:0}; setTimer=F.SET_DUR;
   drones.forEach(d=>{d.reset();d.mesh.position.copy(d.pos);});
-  ui.closeModal(); phase='playing';
+  ui.closeModal(); phase='playing'; arm.reset(); arm.hidden=false;
   hud.setMission(`⚽ 第 ${curSet} 節`);
 }
 function showMatchEnd(){
-  phase='match_end';
+  phase='match_end'; arm.hidden=true;
   const win=setsWon.A>setsWon.B, tie=setsWon.A===setsWon.B;
   sfx.play(win?'finish':'fail');
   // 學習歷程回寫（根治基本版幽靈 key bug #3——足球成績從此真的有記錄）
@@ -305,10 +307,10 @@ addEventListener('pointerdown',()=>{ idleT=0; if(demo&&demoT>1)stopDemo(); });
 addEventListener('pointermove',()=>{ idleT=0; });
 function startMatch(){
   ui.closeModal(); sfx.play('click');
-  engine.simStarted=true; phase='playing';
+  engine.simStarted=true; phase='playing'; arm.reset(); arm.hidden=false;
   gearMax=player.gear; player.power=powerOn; drones.forEach(d=>d.hitFx=hitFx); /* 2026-11-28 AI 也會被撞翻、滾地、卡網 */ powerReset(player); syncModes(); hud.setConditionTag(soccerChallenge()?'⚠ '+soccerChallenge():'');
   hud.setMission('⚽ 第 1 節');
-  hud.toast(noHold?'開賽！注意抓住油門，放開會下墜':'開賽！衝向對面紅色球門環',noHold?'warn':'ok');
+  hud.toast(noHold?'開賽！先起槳，注意抓住油門，放開會下墜':'開賽！先起槳，再衝向對面紅色球門環',noHold?'warn':'ok');
 }
 function togglePause(){
   if(replay.active)return;
@@ -366,7 +368,8 @@ engine.start((dt,simStarted)=>{
   if(simStarted&&phase==='playing'){
     if(demo) drones.forEach(d=>updateSoccerAI(d,dt,{drones,player,SF:1,diff:'hard'}));
     else{
-    player.step(dt,p,SF,noHold,SOCCER_FEEL[SF_OPTS[sfIdx].code]);
+    { const pa=arm.tick(dt,p,{airborne:player.pos.y>F.BR+0.15});   // 停槳＝馬達不轉：沒有推力（noHold＋油門最低＝自由落下）
+      player.step(dt,pa,SF,noHold||!arm.armed,SOCCER_FEEL[SF_OPTS[sfIdx].code]); }
     if(player._evt){ replay.mark(player._evt==='net'?'卡網':player._evt==='drop'?'掉網':'滾地'); hud.toast(player._evt==='net'?'🧱 卡網了！往網子的反方向拉，比較快脫困':player._evt==='drop'?'🧱 從網子上掉下去了…':'🌀 在地上滾…等機身穩定再起飛','warn'); player._evt=null; }
     if(player.power){ for(const [,m] of powerAlerts(player))hud.toast(m,'warn');
       window._pwT=(window._pwT||0)+dt; if(window._pwT>0.5){ window._pwT=0; syncModes(); } }

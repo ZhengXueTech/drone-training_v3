@@ -274,7 +274,7 @@ $('b-reset').addEventListener('click',()=>{
   let pending=0; try{ pending=(JSON.parse(localStorage.getItem('nd.cloud.queue')||'[]')||[]).length; }catch{}
   if(!confirm('清除這台裝置的關卡紀錄、徽章、我的球機和證書資料，讓下一位從頭開始？'+(pending?'\n（還有 '+pending+' 筆班級成績沒上傳完，會保留繼續上傳）':'')))return;
   const PRE=['nd.progress.','nd.stash.','nd.leaderboard.','nd.race.ghost.','nd.tut.','nd.scen.','nd.hand.','nd.diff.'];
-  const ONE=['nd.badges','nd.student','nd.owner','nd.race.missions','nd.garage.build','nd.egg','nd3.ball','nd3.certName','nd.local.queue'];
+  const ONE=['nd.badges','nd.student','nd.owner','nd.race.missions','nd.garage.build','nd.egg','nd3.ball','nd3.certName','nd.local.queue','nd.armCount'];
   const del=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&(ONE.includes(k)||PRE.some(p=>k.startsWith(p))))del.push(k); }
   del.forEach(k=>localStorage.removeItem(k));
   ['nd.cloud.auth3','nd.exam'].forEach(k=>{ try{ sessionStorage.removeItem(k); }catch{} });

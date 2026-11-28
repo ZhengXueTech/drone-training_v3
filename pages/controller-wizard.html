@@ -155,6 +155,7 @@ const AXN={throttle:'油門',yaw:'偏航（機頭轉向）',pitch:'俯仰（前�
 /* 順序＝優先順序：按鈕不夠的搖桿，從前面開始排，後面的略過改用鍵盤 */
 const BTN_STEPS=[['confirm','確認鍵','選單裡按「確定」用的鍵。建議：A（右手菱形最下面那顆）','press'],
   ['back','返回／暫停鍵','選單裡是「返回」，飛行中是「暫停」，同一顆。建議：B（菱形右邊那顆）；遙控器可用一個撥桿','press'],
+  ['arm','起槳撥桿','真機用來解鎖馬達的撥桿（一般是 CH5／AUX1）。指派後模擬器跟真機一樣用撥桿起槳、停槳；略過就用兩支搖桿往「下、內」扳的手勢（手把另有 Y 鍵）','arm'],
   ['gear','檔位鍵','一檔（穩）／二檔（快）切換。建議：右扳機 RT；遙控器用撥桿','gear'],
   ['mode','模式鍵','切換飛行模式（角度／Acro／街機）。建議：左扳機 LT','press'],
   ['camCycle','視角鍵','切換跟機／FPV／飛手視角。建議：≡','press'],
@@ -357,7 +358,8 @@ function render0(){
     S.innerHTML=`<h2>第 ${s+1} 步：${AXN[name]}</h2><p class="big">${txt}</p><p class="sub">${tip}</p><p id="hint" class="sub"></p><div id="sg"></div>`;
   }else if(s===7){
     const b=BTN_STEPS[st.btnStep];
-    const how=b[3]==='hold'?'按住你要當「<b class="warn">'+b[1]+'</b>」的按鈕；用撥桿的話，撥到「開」的那一邊'
+    const how=b[3]==='arm'?'把你要當「<b class="warn">'+b[1]+'</b>」的撥桿撥到「起槳（開）」的那一邊；按鈕也可以（按一下起槳、再按一下停槳）'
+      :b[3]==='hold'?'按住你要當「<b class="warn">'+b[1]+'</b>」的按鈕；用撥桿的話，撥到「開」的那一邊'
       :b[3]==='gear'?'按一下你要當「<b class="warn">'+b[1]+'</b>」的按鈕；用撥桿的話，撥到「二檔」的那一邊'
       :'按一下你要當「<b class="warn">'+b[1]+'</b>」的按鈕，或撥一下開關';
     const std=curGp()?.mapping==='standard';
@@ -705,7 +707,7 @@ const showWiz=()=>{ $('wiz').style.display=''; $('wiz').scrollIntoView({behavior
 const pads=()=>{ try{ return [...(navigator.getGamepads?.()||[])].filter(Boolean); }catch{ return []; } };
 const known=gp=>['local','cloud','file'].includes(profileSource(gp))||!!gpCfgRead(gp)||gp.mapping==='standard';
 const niceName=gp=>{ const p=profileFor(gp); return (p&&p.name)||(gp.id.replace(/\s*\((?:STANDARD GAMEPAD|Vendor|XInput).*$/i,'').trim()||'搖桿').substring(0,40); };
-const LAMPS=[['confirm','確認'],['back','返回／暫停'],['gear','檔位'],['mode','模式'],['camCycle','視角'],['selfLevel','自穩']];
+const LAMPS=[['confirm','確認'],['back','返回／暫停'],['arm','起槳'],['gear','檔位'],['mode','模式'],['camCycle','視角'],['selfLevel','自穩']];
 let cur=null, input=null, last=performance.now();
 function paint(gp){
   if(!gp){ cur=null; $('q-body').innerHTML=`<p class="hero">接上手把或遙控器，然後按任一顆按鈕</p>

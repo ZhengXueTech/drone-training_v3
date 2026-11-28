@@ -24,7 +24,7 @@
 const STORE='nd.settings.gpProfiles';
 export const PROFILE_FILE_VERSION=1;
 export const AXIS_NAMES=['throttle','yaw','pitch','roll'];
-export const FN_NAMES=['confirm','back','camCycle','pilotCycle','crouch','gear','mode','action','selfLevel'];
+export const FN_NAMES=['confirm','back','arm','camCycle','pilotCycle','crouch','gear','mode','action','selfLevel'];   // arm：2026-11-28 起槳撥桿（core/arming.js）
 
 let _local=null, _file={}, _cfgCache=new Map(), _draft=null;
 

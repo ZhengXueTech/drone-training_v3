@@ -233,7 +233,7 @@ export class UI{
   /* 每幀（modal 開啟時）：把 pollMenu 事件轉為焦點移動 */
   /* 2026-11-28 老師：「按鈕有限，可以用組合鍵處理」——飛行中叫出暫停選單（裡面有回首頁）：
        手把：SELECT＋START 一起按住 1 秒
-       遙控器（沒有按鈕）：兩支搖桿都往「下、內」扳到底（油門最低＋偏航右＋俯仰後＋翻滾左），按住 1.5 秒
+       遙控器：優先用撥桿（搖桿精靈指派「返回／暫停」）；沒有空撥桿時，兩支搖桿往「外」平推（左桿往左、右桿往右），按住 2 秒，只在停槳／落地時有效
      只在沒有選單開著時有效；送出 Esc（跟鍵盤 Esc 一樣，各關卡原本的暫停流程都接得到）。 */
   _comboTick(dt){
     let combo=0;   // 0＝沒有、1＝手把組合鍵、2＝遙控器手勢
@@ -242,8 +242,10 @@ export class UI{
         const b=gp.buttons||[];
         if(b[8]&&b[8].pressed&&b[9]&&b[9].pressed){ combo=1; break; }
         if(this.input.gpAxis){ const t=this.input.gpAxis(gp,'throttle'), y=this.input.gpAxis(gp,'yaw'), p=this.input.gpAxis(gp,'pitch'), r=this.input.gpAxis(gp,'roll');
-          if(t<-0.85&&y>0.85&&p<-0.85&&r<-0.85){ combo=2; break; } } } } }catch{}
-    const need=combo===1?1.0:1.5;
+          // 2026-11-28 改：原本「下、內」跟真機起槳手勢（CSC）一樣 → 改成兩支搖桿往「外」平推（前後置中），只在停槳／落地時有效
+          const safe=globalThis.__ndArmed!==true&&globalThis.__ndAirborne!==true;
+          if(safe&&y<-0.85&&r>0.85&&Math.abs(p)<0.4){ combo=2; break; } } } } }catch{}
+    const need=combo===1?1.0:2.0;
     if(combo&&!this._comboDone){ this._comboT=(this._comboT||0)+dt;
       if(!this._comboEl){ const el=document.createElement('div'); el.style.cssText='position:fixed;left:50%;top:40%;transform:translateX(-50%);z-index:9999;pointer-events:none;background:rgba(8,16,30,.88);color:#fff;font:600 16px system-ui,"Microsoft JhengHei",sans-serif;padding:10px 18px;border-radius:12px;border:1px solid rgba(255,255,255,.4);display:none'; document.body.appendChild(el); this._comboEl=el; }
       if(this._comboT>0.25){ this._comboEl.style.display='block'; this._comboEl.textContent=`⏸ 繼續按住＝暫停選單（${Math.max(0,need-this._comboT).toFixed(1)} 秒）`; }

@@ -69,7 +69,8 @@ import { getLevel } from '../data/levels-manifest.js';
 import { Challenge } from '../core/challenge.js';
 import { startPanel } from '../core/start-panel.js';
 import { showKnowledgeCard } from '../data/knowledge-cards.js';
-import { buildCampus } from '../core/campus-model.js';   // 第五天：中正國中校園外型（老師的 3D 校園導覽）
+import { buildCampus } from '../core/campus-model.js';
+import { Arming, freeFall } from '../core/arming.js';   // 2026-11-28 起槳／停槳   // 第五天：中正國中校園外型（老師的 3D 校園導覽）
 
 /* ============================================================
    職業線：無人機外送「開業第一週」（2026-11-28 老師定案）
@@ -92,6 +93,7 @@ const input=new InputManager();
 const ch=new Challenge({levelId:LEVEL_ID,input});
 const hud=new HUD(ch.hudFeatures(LEVEL.hud));
 const ui=new UI(input);
+const arm=new Arming({input,ui}); arm.hidden=true;
 ch.ui=ui; ch.setHud(hud);
 const BX=22, BZ=22, BY=36;   // 2026-11-28 比例標準：一層樓 3 m，最高 10 樓 30 m
 const rig=new CameraRig(engine.camera,{pilotPositions:[
@@ -459,7 +461,7 @@ function showIntro(){
       showBrief(); }});
 }
 function showBrief(){
-  playing=false; frameEl.style.display='none';
+  playing=false; arm.hidden=true; frameEl.style.display='none';
   day=DAYS[dayIdx];
   ui.showModal({title:`📱 第${day.n}天・${day.title}`,
     html:`<div class="msg"><b class="from">${day.from}</b><br>${day.msg.join('<br>')}</div>
@@ -477,13 +479,13 @@ function startDay(){
   drone.reset((day.campus?SPAWN5:SPAWN).clone()); drone.mode='arcade'; ch.apply(drone); prevYaw=drone.yaw;
   prevVh.set(0,0);
   ui.closeModal(); sfx.play('click');
-  engine.simStarted=true; playing=true; finished=false;
+  engine.simStarted=true; playing=true; finished=false; arm.reset(); arm.hidden=false;
   cargoBar.style.display='block'; syncModes();
   hud.setMission(`第${day.n}天・${day.title}`);
-  hud.toast(`${GOODS[day.goods].icon} 出發！先慢慢升空`,'ok');
+  hud.toast(`${GOODS[day.goods].icon} 先起槳，再慢慢升空`,'ok');
 }
 function fail(reason){
-  if(finished)return; finished=true; playing=false; sfx.play('warn');
+  if(finished)return; finished=true; playing=false; arm.hidden=true; sfx.play('warn');
   events.push({x:drone.pos.x,z:drone.pos.z,type:'fail'});
   showReview(false,reason);
 }
@@ -492,7 +494,7 @@ function deliverStop(){
   events.push({x:pad.x,z:pad.z,type:'ok'});
   sfx.play('ok'); hud.toast(`✅ 交貨成功（${GOODS[day.goods].name} ${Math.round(integrity)}%）`,'ok');
   stopIdx++;
-  if(stopIdx>=day.stops.length){ finished=true; playing=false; sfx.play('finish'); setTimeout(()=>showReview(true),700); }
+  if(stopIdx>=day.stops.length){ finished=true; playing=false; arm.hidden=true; sfx.play('finish'); setTimeout(()=>showReview(true),700); }
 }
 
 /* ── 回顧：俯視軌跡圖（綠＝穩、黃＝有點晃、紅＝太晃），✕＝撞、▼＝重落地、★＝交貨 ── */
@@ -611,8 +613,10 @@ engine.start((dt,simStarted)=>{
       if(_gust.lengthSq()>0.001){ drone.vel.addScaledVector(_gust,dt*2.2); _gust.multiplyScalar(Math.pow(0.08,dt)); }
     }
     prevVy=drone.vel.y;
-    drone.update(dt,p);
-    if(inCampus){ const th=p.throttle||0; drone.pos.y=Math.min(drone.bounds.y,drone.pos.y+(th>0?th*3:th*1.2)*dt); }   // 空拍機爬升較快（約 7 m/s，接近實機）
+    const grounded=drone.pos.y<0.35||Object.values(PADS).some(pd=>Math.hypot(drone.pos.x-pd.x,drone.pos.z-pd.z)<pd.r+0.3&&drone.pos.y<pd.y+0.6&&drone.pos.y>pd.y-0.2), air=!grounded;
+    const pa=arm.tick(dt,p,{airborne:air});
+    if(arm.armed)drone.update(dt,pa); else if(air)freeFall(drone,dt); else drone.vel.set(0,0,0);
+    if(inCampus&&arm.armed){ const th=pa.throttle||0; drone.pos.y=Math.min(drone.bounds.y,drone.pos.y+(th>0?th*3:th*1.2)*dt); }   // 空拍機爬升較快（約 7 m/s，接近實機）
     const hit=collide();
     tSec+=dt;
     // 晃動＝水平加速度（平滑 0.25 秒）——陣風造成的不算玩家的錯，扣分時減半
@@ -632,7 +636,8 @@ engine.start((dt,simStarted)=>{
     let pad=null;
     if(day.campus){ if(inCampus)campusTick(dt); if(day.shots[shotIdx]==='land')pad=PADS.court; } else pad=curPad();
     const onPad=!!pad&&Math.hypot(drone.pos.x-pad.x,drone.pos.z-pad.z)<pad.r&&drone.pos.y<pad.y+0.5&&drone.hSpeed()<0.5;
-    landT=onPad?landT+dt:0;
+    const lastStop=day.campus||stopIdx>=day.stops.length-1, needDisarm=onPad&&lastStop&&arm.armed;   // 最後一站：停穩後要停槳才算完成（實機降落後也要停槳）
+    landT=(onPad&&!needDisarm)?landT+dt:0;
     if(landT>1.0&&playing){ landT=0; day.campus?finishCampus():deliverStop(); }
     if(integrity<=0)fail(day.campus?'畫面晃得太厲害，學校退件':`${GOODS[day.goods].name}${day.goods==='cake'?'塌了':day.goods==='vase'?'碎了':'灑光了'}`);
     if(day.time&&playing){ timeLeft-=dt; if(timeLeft<=0)fail('超過時間，客人取消訂單'); }
@@ -644,10 +649,10 @@ engine.start((dt,simStarted)=>{
     hud.setTimer(day.time?Math.max(0,timeLeft):tSec);
     if(!day.campus){
     const nm=pad===PADS.balcony?'7 樓陽台（粉紅停機墊）':pad===PADS.alley?'巷子最裡面（低飛鑽進去）':pad===PADS.house?'林小姐家前院':pad===PADS.park?'公園野餐':'巷口公司';
-    hud.setGuide(onPad?'停穩…交貨中':Math.hypot(drone.pos.x-pad.x,drone.pos.z-pad.z)<8?'🛬 '+landHint(pad):`送到：${nm}`);
+    hud.setGuide(needDisarm?'✅ 停好了！停槳完成今天的任務':onPad?'停穩…交貨中':Math.hypot(drone.pos.x-pad.x,drone.pos.z-pad.z)<8?'🛬 '+landHint(pad):`送到：${nm}`);
     hud.setProgress(day.stops.length>1?`第 ${Math.min(stopIdx+1,day.stops.length)}/${day.stops.length} 單`:`${GOODS[day.goods].icon} ${GOODS[day.goods].name}`);
     hud.setOffscreenTarget(new THREE.Vector3(pad.x,pad.y,pad.z));
-    }else if(onPad)hud.setGuide('停穩…降落中');
+    }else if(needDisarm)hud.setGuide('✅ 停好了！停槳完成空拍任務'); else if(onPad)hud.setGuide('停穩…降落中');
   }
   mesh.position.copy(drone.pos); mesh.quaternion.copy(drone.q);
   mesh.visible=(rig.mode!=='fpv');
