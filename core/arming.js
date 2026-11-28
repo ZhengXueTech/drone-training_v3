@@ -5,7 +5,7 @@
      ・空中停槳＝馬達停，直接掉下來（安全教育）；手勢／按鍵在空中不接受停槳，只有撥桿可以
    起槳方式優先順序：
      1. 遙控器有指派「起槳撥桿」（搖桿精靈 fn:'arm'）→ 撥桿，跟真機一樣
-     2. 沒有撥桿 → 兩支搖桿往「下、內」扳住 0.5 秒（CSC 手勢；下、外 也可以）
+     2. 沒有撥桿 → 兩支搖桿往「下、內」扳住，畫面風扇轉起來（約 1 秒）就放開（CSC 手勢；下、外 也可以）
      3. 標準手把另有 Y 鍵；鍵盤 E 鍵；觸控／滑鼠點畫面上的「起槳」鈕
    教學：同一台電腦前 3 次起槳顯示大提示（含動畫），之後縮成角落小字；首頁「換下一位玩家」會重設。
    用法（關卡）：
@@ -13,8 +13,9 @@
      每幀：const p2=arm.tick(dt,p,{airborne}); → 用 p2 取代 p 給物理；arm.armed 判斷馬達有沒有在轉
      arm.reset() 開新局（回到停槳）。arm.onChange=(armed,{air})=>{} 可選。 */
 import { gpCfgRead } from './input.js';
+import { sfx } from './audio.js';
 
-const KEY='nd.armCount', BIG_N=3;
+const KEY='nd.armCount', BIG_N=3, GEST_T=1.0;   // 手勢要扳住 1 秒（11-28 老師：0.5 秒太短，馬達一轉、手還扳著，機頭就被轉歪）
 const NEUTRAL={throttle:-1,yaw:0,pitch:0,roll:0};
 const isRC=(gp,cfg)=>!!(cfg&&cfg.throttleType==='bottom')||/startrc|radiomaster|edgetx|opentx|frsky|jumper|tx16|boxer|zorro|pocket|rc /i.test(gp.id);
 
@@ -41,7 +42,7 @@ export class Arming{
     if(this.armed===v)return; this.armed=v; globalThis.__ndArmed=v;
     if(v&&!silent){ try{ localStorage.setItem(KEY,String(this.count()+1)); }catch{} }
     this.onChange&&!silent&&this.onChange(v,{air});
-    if(!silent)this._flash(v?'🔓 已起槳　馬達怠速中，推油門起飛':air?'⚠ 空中停槳！馬達停了，飛機直接掉下去':'🔒 已停槳');
+    if(!silent)this._flash(v?(this._relLock?'🌀 馬達轉了！先放開搖桿，再推油門起飛':'🌀 已起槳　馬達怠速中，推油門起飛'):air?'⚠ 空中停槳！馬達停了，飛機直接掉下去':'🔒 已停槳');
   }
   tick(dt,p,{airborne=false}={}){
     globalThis.__ndAirborne=airborne;
@@ -65,8 +66,8 @@ export class Arming{
       // 改成看「扳得夠遠（長度 0.8 以上）＋方向在對的那一格」：左桿右下（或左下）、右桿左下（或右下），兩邊相反。
       const L=Math.hypot(y,t), Rr=Math.hypot(r,pi), Q=0.4;
       gest=L>0.8&&Rr>0.8&&t<-Q&&pi<-Q&&((y>Q&&r<-Q)||(y<-Q&&r>Q));
-      if(gest&&!this._gLock){ this._g+=dt; if(this._g>=0.5){ this._gLock=true; this._g=0;
-          if(!this.armed)want=true; else if(!airborne)want=false; else this._warn('空中不能用手勢停槳，先降落'); } }
+      if(gest&&!this._gLock){ this._g+=dt; if(this._g>=GEST_T){ this._gLock=true; this._g=0;
+          if(!this.armed){ want=true; this._relLock=true; } else if(!airborne)want=false; else this._warn('空中不能用手勢停槳，先降落'); } }
       if(!gest){ this._g=0; if(Math.abs(y)<0.3&&Math.abs(r)<0.3)this._gLock=false; }
     }
     // 2b. 搖桿精靈把「起槳」指派給一顆按鈕：按一下切換
@@ -84,7 +85,16 @@ export class Arming{
     if(want===true&&!this.armed){ if(lowT||m==='switch')this._set(true,airborne); else this._warn(m==='kb'?'起槳時不要按 W（油門）':'起槳時不要推油門'); }
     else if(want===false&&this.armed)this._set(false,airborne);
     this._warnT=Math.max(0,this._warnT-dt);
+    this._spin=gest&&!this._gLock?Math.min(1,this._g/GEST_T):0;
+    // 手勢起槳後：搖桿還扳在角落 → 先不吃輸入，等放開（不然一起槳就被偏航／前後帶走）
+    if(this._relLock&&gp){ const ax=n=>this.input.gpAxis(gp,n,cfg);
+      if(Math.abs(ax('yaw'))<0.3&&Math.abs(ax('roll'))<0.3&&Math.abs(ax('pitch'))<0.3)this._relLock=false; }
+    if(!this.armed)this._relLock=false;
     this._ui(p,gest&&!this.armed,m);
+    this._hum(dt,p);
+    if(this.armed&&this._relLock)return {...p,...NEUTRAL};
+    // 還在地上、沒推油門：真機沒有升力，轉向和前後左右都沒有作用（只有油門能讓它離地）
+    if(this.armed&&!airborne&&p.throttle<0.2)return {...p,yaw:0,pitch:0,roll:0};
     if(this.armed)return p;
     // 停槳：馬達不轉＝沒有任何控制
     return {...p,...NEUTRAL};
@@ -104,6 +114,8 @@ export class Arming{
       #nd-arm-btn{pointer-events:auto;margin-top:8px;font:700 16px system-ui,"Microsoft JhengHei",sans-serif;padding:8px 18px;border-radius:999px;border:0;background:#ffb44a;color:#1a1200;cursor:pointer}
       #nd-arm.small #nd-arm-btn{margin:0 0 0 8px;padding:3px 10px;font-size:13px}
       #nd-arm-st{position:fixed;right:12px;bottom:200px;z-index:59;pointer-events:none;font:600 13px system-ui,"Microsoft JhengHei",sans-serif;padding:4px 10px;border-radius:999px;background:rgba(8,16,30,.8);color:#fff;border:1px solid rgba(255,255,255,.35)}
+      #nd-arm-st .fan{display:inline-block;animation:ndFan .35s linear infinite}@keyframes ndFan{to{transform:rotate(360deg)}}
+      #nd-arm .bar{height:8px;border-radius:4px;background:#33445e;margin:8px auto 0;width:200px;overflow:hidden}#nd-arm .bar i{display:block;height:100%;background:#ffb44a;width:0}
       #nd-arm-fl{position:fixed;left:50%;top:32%;transform:translateX(-50%);z-index:61;pointer-events:none;display:none;font:700 18px system-ui,"Microsoft JhengHei",sans-serif;padding:10px 18px;border-radius:12px;background:rgba(8,16,30,.92);color:#fff;border:1px solid rgba(255,255,255,.4)}
       @keyframes ndArmL{0%,15%{transform:translate(0,0)}45%,85%{transform:translate(var(--dx),14px)}100%{transform:translate(0,0)}}
       #nd-arm .knob{animation:ndArmL 2.4s ease-in-out infinite}`;
@@ -118,22 +130,22 @@ export class Arming{
   _ui(p,gesturing,m){
     const show=this.enabled&&!this.armed&&!(this.ui&&this.ui.modalOpen)&&!this.hidden;
     this._st.style.display=this.enabled&&!this.hidden?'block':'none';
-    this._st.textContent=this.armed?'🔓 已起槳':'🔒 停槳';
+    this._st.innerHTML=this.armed?'<span class="fan">✣</span> 已起槳':'🔒 停槳';
     this._st.style.borderColor=this.armed?'#4ade80':'rgba(255,255,255,.35)';
     if(!show){ this._el.style.display='none'; return; }
     { const gp=this._gp(p); this._yName=gp&&/dualsense|dualshock|wireless controller|054c|playstation/i.test(gp.id)&&!/xbox/i.test(gp.id)?'△':'Y'; }
     const big=this.count()<BIG_N, key=m+(big?'B':'S')+(gesturing?'g':'')+(this._yFree?'y':'');
     this._el.style.display='block';
-    if(this._key===key)return; this._key=key;
+    if(this._key===key){ const b=this._el.querySelector('.bar i'); if(b)b.style.width=Math.round(this._spin*100)+'%'; return; } this._key=key;
     this._el.className=big?'':'small';
     const D={
       switch:['撥起「起槳撥桿」','油門先拉到最低，再撥起槳撥桿（真機也是這樣）。','sw'],
-      rc:['兩支搖桿往「下、內」扳','油門拉到底，左桿往右下、右桿往左下，扳住 0.5 秒。','csc'],
-      pad:this._yFree?[`按 ${this._yName} 起槳`,'也可以：兩支搖桿都往「下、內」扳住 0.5 秒（跟遙控器一樣）。','csc']
-        :['兩支搖桿往「下、內」扳','左桿扳到右下角、右桿扳到左下角，扳住 0.5 秒（'+this._yName+' 鍵已被搖桿設定用掉）。','csc'],
+      rc:['兩支搖桿往「下、內」扳','油門拉到底，左桿往右下、右桿往左下扳住；看到風扇轉起來、聽到馬達聲（約 1 秒）就放開。','csc'],
+      pad:this._yFree?[`按 ${this._yName} 起槳`,'也可以：兩支搖桿都往「下、內」扳住，風扇轉起來（約 1 秒）就放開（跟遙控器一樣）。','csc']
+        :['兩支搖桿往「下、內」扳','左桿扳到右下角、右桿扳到左下角扳住，風扇轉起來（約 1 秒）就放開（'+this._yName+' 鍵已被搖桿設定用掉）。','csc'],
       kb:['按 E 起槳','起槳時不要按 W（油門）。降落後再按一次 E＝停槳。',null],
       touch:['點下面的「起槳」','起槳後馬達開始轉，才能推油門起飛。',null]}[m]||['起槳',''];
-    this._el.innerHTML=`<h3>🔒 先起槳</h3><div class="d">${gesturing?'繼續扳住…':D[0]}</div>${big&&D[2]?this._svg(D[2]):''}`
+    this._el.innerHTML=`<h3>🔒 先起槳</h3><div class="d">${gesturing?'<span class="fan" style="display:inline-block;animation:ndFan .5s linear infinite">✣</span> 馬達啟動中…繼續扳住':D[0]}</div>${gesturing?'<div class="bar"><i></i></div>':''}${big&&D[2]&&!gesturing?this._svg(D[2]):''}`
       +`<div class="s">${D[1]}<br>降落後記得停槳；空中停槳飛機會直接掉下去。</div>`
       +(m==='touch'||m==='kb'||!big?`<button id="nd-arm-btn" type="button">🔓 起槳</button>`:'');
   }
@@ -144,6 +156,17 @@ export class Arming{
     const stick=(cx,dx)=>`<circle cx="${cx}" cy="30" r="24" fill="#1d2a40" stroke="#8aa"/><line x1="${cx-24}" y1="30" x2="${cx+24}" y2="30" stroke="#33445e"/><line x1="${cx}" y1="6" x2="${cx}" y2="54" stroke="#33445e"/>
       <g class="knob" style="--dx:${dx}px"><circle cx="${cx}" cy="30" r="8" fill="#ffb44a"/></g>`;
     return `<svg width="170" height="66" viewBox="0 0 170 66">${stick(40,14)}${stick(130,-14)}</svg>`;
+  }
+  /* 馬達聲：手勢扳住時慢慢轉起來，起槳後怠速，推油門越高越尖；停槳就停（音效開關沿用 sfx.enabled） */
+  _hum(dt,p){
+    const want=this.enabled&&!this.hidden&&(this.armed||this._spin>0)&&sfx.enabled;
+    if(!want){ if(this._osc){ try{ this._gn.gain.setTargetAtTime(0,sfx.ctx.currentTime,0.08); }catch{} if(!this.armed&&!(this._spin>0)){ const o=this._osc; this._osc=null; setTimeout(()=>{ try{o.stop();}catch{} },400); } } return; }
+    if(!this._osc){ if(!sfx._ensure())return; const c=sfx.ctx; this._osc=c.createOscillator(); this._osc.type='sawtooth';
+      const f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=900; this._gn=c.createGain(); this._gn.gain.value=0;
+      this._osc.connect(f); f.connect(this._gn); this._gn.connect(c.destination); this._osc.start(); }
+    const c=sfx.ctx, th=this.armed?Math.max(0,p.throttle):0, k=this.armed?1:this._spin;
+    this._osc.frequency.setTargetAtTime(40+50*k+120*th,c.currentTime,0.05);
+    this._gn.gain.setTargetAtTime(0.025*k+0.02*th,c.currentTime,0.05);
   }
   set hidden(v){ this._hid=v; if(v){ this._el.style.display='none'; this._st.style.display='none'; } }
   get hidden(){ return !!this._hid; }
