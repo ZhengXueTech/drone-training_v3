@@ -173,6 +173,15 @@ export const LEVELS=[
     doneField:'completed', unlockAfter:null,
     emoji:'🌀', desc:'風力會不斷把無人機推離地面圓圈，圓圈還會隨時間縮小；在圈內加分、出圈扣分，60 秒後結算穩定度等級。',
     hint:'留意風向箭頭反向修正・圓圈越晚越小，務必集中精神' },
+  { id:'career-delivery', title:'職業線：無人機外送', part:'D', file:'levels/career-delivery.html',
+    // 2026-11-28 職業線第一條（老師定案：任務情境升級成「職業線」，簡報→飛→回顧→說教）。
+    modes:['solo'], maxSeats:1,
+    hud:{battery:false,wind:false,minimap:true,telemetry:true,gpbar:true,attitude:false},
+    metrics:[{key:'day',label:'第幾天'},{key:'grade',label:'評等'},{key:'integrity',label:'貨物完整度(%)'},
+             {key:'steadyPct',label:'穩定飛行(%)'},{key:'hits',label:'撞到次數'},{key:'time',label:'用時(秒)'}],
+    doneField:'completed', unlockAfter:null,
+    emoji:'🛵', desc:'開業第一週：生日蛋糕、窄巷珍奶、高樓陽台、午餐尖峰。貨物怕晃，飛得穩才有好評；送完回顧飛行軌跡，再看真實世界的無人機外送。',
+    hint:'推桿、放桿都慢慢來・快到之前提早減速・降落要輕' },
   { id:'x-cargo', title:'情境體驗：投遞任務', part:'D', file:'levels/x-cargo.html',
     // Phase 5「exp 系列移植」第二關（移植自基本版 exp/exp-cargo.html）——
     // 物理同樣共用 core/physics.js 的 Drone(arcade) 模式；地圖邊界改用對稱 BOUND=11
