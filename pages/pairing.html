@@ -6,52 +6,50 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🎮</text></svg>">
 <title>newdrone｜席位大廳（pairing）</title>
+<link rel="stylesheet" href="../core/v3-site.css">
 <style>
-  body{margin:0;background:#0a0f1a;color:#cfefff;font-family:'Share Tech Mono','Consolas',monospace;
-    min-height:100vh;padding:28px 16px 60px;box-sizing:border-box;}
-  .wrap{max-width:900px;margin:0 auto;}
-  h1{font-size:22px;color:#00eeff;letter-spacing:2px;margin:0;}
+  /* 2026-11-28 老師：「同場即時對戰的畫面跟之前差很多」→ 席位大廳改成 v3 網站樣式（跟首頁、機庫同一套顏色、字體、圓角）。只改外觀，功能不動。 */
+  body{padding:22px 16px 60px;}
+  .wrap{max-width:1000px;margin:0 auto;}
+  h1{font-size:30px;font-weight:900;margin:0;color:var(--ink);letter-spacing:1px;}
   .topline{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px;}
-  .toplabel{font-size:10px;color:#7aa3b8;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;}
-  button,a.btn{background:#0b1626;color:#9fc3d8;border:1px solid rgba(0,238,255,.35);border-radius:8px;
-    font-size:12px;padding:9px 15px;font-family:inherit;cursor:pointer;text-decoration:none;display:inline-block;min-height:40px;}
-  button:hover,a.btn:hover{background:#153a5e;color:#cfefff;}
-  button.primary{background:#0e2238;color:#00eeff;border-color:rgba(0,238,255,.6);}
-  button.primary:disabled{opacity:.35;cursor:not-allowed;}
-  button.danger{border-color:rgba(255,90,90,.4);color:#ff8a8a;}
-  button.danger:hover{background:#3a1414;}
-  select{width:100%;box-sizing:border-box;background:#050a12;border:1px solid rgba(0,238,255,.35);
-    border-radius:7px;padding:9px 10px;color:#cfefff;font-family:inherit;font-size:13px;}
-  select:focus{outline:none;border-color:#00eeff;}
-
-  .sect{background:#0b1626;border:1px solid rgba(0,238,255,.35);border-radius:14px;padding:18px 20px;margin-bottom:20px;}
-  .sect h2{font-size:13px;color:#00eeff;margin:0 0 10px;letter-spacing:1px;}
-  .sect .sub{font-size:11px;color:#7aa3b8;margin:0 0 14px;line-height:1.7;}
-
+  .toplabel{font-size:13px;font-weight:900;letter-spacing:2px;color:var(--acc2);margin-bottom:4px;}
+  button,a.btn{background:var(--card2);color:var(--ink);border:2px solid var(--line);border-radius:999px;
+    font-size:15px;font-weight:700;padding:9px 18px;font-family:inherit;cursor:pointer;text-decoration:none;display:inline-block;min-height:44px;}
+  button:hover,a.btn:hover,button:focus-visible,a.btn:focus-visible{border-color:var(--acc);outline:none;}
+  button.primary{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:900;}
+  button.primary:disabled{opacity:.4;cursor:not-allowed;}
+  button.danger{border-color:#c0564f;color:#ffb4ae;}
+  select{width:100%;box-sizing:border-box;background:var(--card);border:2px solid var(--line);
+    border-radius:12px;padding:9px 12px;color:var(--ink);font-family:inherit;font-size:15px;}
+  select:focus{outline:none;border-color:var(--acc);}
+  .sect{background:var(--card-a);border:1px solid var(--line);border-radius:22px;padding:20px 22px;margin-bottom:18px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+  .sect h2{font-size:20px;font-weight:900;color:var(--ink);margin:0 0 8px;}
+  .sect .sub{font-size:14px;color:var(--sub);margin:0 0 14px;line-height:1.7;}
   .seat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;}
-  .seat{background:#050a12;border:1px solid rgba(0,238,255,.25);border-radius:10px;padding:12px 14px;}
-  .seat.human{border-color:rgba(74,222,128,.55);box-shadow:0 0 14px rgba(74,222,128,.12);}
-  .seat h3{margin:0 0 8px;font-size:12px;color:#facc15;letter-spacing:1px;}
-  .seat .field{margin-bottom:8px;}
-  .seat label{display:block;font-size:10px;color:#7aa3b8;margin-bottom:4px;}
-  .axbars{display:flex;flex-direction:column;gap:3px;margin-top:8px;}
-  .axrow{display:flex;align-items:center;gap:6px;font-size:9px;color:#7aa3b8;}
-  .axtrack{flex:1;height:6px;background:rgba(0,238,255,.08);border-radius:3px;position:relative;overflow:hidden;}
-  .axfill{position:absolute;top:0;height:100%;background:#38bdf8;border-radius:3px;}
-  .axnum{width:34px;text-align:right;color:#9fc3d8;}
-  .claim-btn{width:100%;margin-top:6px;font-size:10px;padding:6px 8px;}
-  .claim-btn.on{border-color:rgba(74,222,128,.6);color:#4ade80;}
-  .tag-dev{font-size:9px;color:#3b5c7a;margin-top:4px;word-break:break-all;}
-
-  .status-box{margin-top:12px;font-size:12px;padding:10px 12px;border-radius:8px;line-height:1.7;
-    background:rgba(0,238,255,.06);border:1px solid rgba(0,238,255,.25);color:#9fc3d8;}
-  footer{text-align:center;font-size:10px;color:#3b5c7a;margin-top:30px;}
+  .seat{background:var(--card2);border:2px solid var(--line);border-radius:18px;padding:14px 16px;}
+  .seat.human{border-color:var(--acc);}
+  .seat h3{margin:0 0 10px;font-size:16px;font-weight:900;color:var(--acc2);}
+  .seat .field{margin-bottom:10px;}
+  .seat label{display:block;font-size:13px;color:var(--sub);margin-bottom:4px;}
+  .axbars{display:flex;flex-direction:column;gap:4px;margin-top:8px;}
+  .axrow{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sub);}
+  .axtrack{flex:1;height:6px;background:var(--line);border-radius:3px;position:relative;overflow:hidden;}
+  .axfill{position:absolute;top:0;height:100%;background:var(--acc);border-radius:3px;}
+  .axnum{width:38px;text-align:right;color:var(--sub);font-variant-numeric:tabular-nums;}
+  .claim-btn{width:100%;margin-top:8px;font-size:14px;padding:8px 10px;}
+  .claim-btn.on{border-color:var(--acc);color:var(--acc);}
+  .tag-dev{font-size:11px;color:var(--sub);opacity:.7;margin-top:4px;word-break:break-all;}
+  .status-box{margin-top:12px;font-size:15px;padding:10px 14px;border-radius:14px;line-height:1.7;
+    background:var(--card2);border:1px solid var(--line);color:var(--ink);}
+  footer{text-align:center;font-size:12px;color:var(--sub);margin-top:30px;}
   .pickgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
-  .pickgrid a.card{display:block;background:#050a12;border:1px solid rgba(0,238,255,.3);border-radius:10px;
-    padding:14px 16px;color:#cfefff;text-decoration:none;}
-  .pickgrid a.card:hover{background:#0e2238;}
-  .pickgrid a.card h3{margin:0 0 6px;font-size:13px;color:#00eeff;}
-  .pickgrid a.card p{margin:0;font-size:11px;color:#9fc3d8;}
+  .pickgrid a.card{display:block;background:var(--card2);border:2px solid var(--line);border-radius:18px;
+    padding:16px 18px;color:var(--ink);text-decoration:none;}
+  .pickgrid a.card:hover,.pickgrid a.card:focus{border-color:var(--acc);}
+  .pickgrid a.card h3{margin:0 0 6px;font-size:17px;font-weight:900;color:var(--ink);}
+  .pickgrid a.card p{margin:0;font-size:14px;color:var(--sub);}
+  .gp-focus{outline:3px solid var(--acc)!important;outline-offset:2px;}
 </style>
 </head>
 <body>
@@ -90,7 +88,7 @@
         <button id="c-hold"></button><button id="c-wind"></button><button id="c-gear"></button><button id="c-std">恢復標準</button>
       </div>
       <p class="sub" id="ch-now" style="margin-top:8px"></p>
-      <p class="sub" id="ch-warn" style="color:#fbbf24;display:none"></p>
+      <p class="sub" id="ch-warn" style="color:var(--acc2);display:none"></p>
     </div>
 
     <div class="sect">
@@ -105,6 +103,7 @@
 </div>
 
 <script type="module">
+import { applySiteTheme } from '../core/v3-site.js'; applySiteTheme();   // 2026-11-28 跟首頁同一個主題（霓虹／黃昏）
 import { LEVELS, getLevel } from '../data/levels-manifest.js';
 import { seats, CTL_AI, CTL_GAMEPAD, CTL_KEYBOARD, CTL_TOUCH } from '../data/seats.js';
 import { InputManager } from '../core/input.js';

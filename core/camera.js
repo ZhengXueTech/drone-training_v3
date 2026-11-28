@@ -38,7 +38,11 @@ export function renderSplit(renderer,scene,panes){
      WebGLRenderer.setViewport 原始碼 `q.copy(re).multiplyScalar(te)`） */
   const w=renderer.domElement.clientWidth, h=renderer.domElement.clientHeight;
   renderer.setScissorTest(true);
+  /* 2026-11-28 老師：PVP 多人對戰會 lag——每一格都 render 一次，陰影貼圖也跟著重算一次（2～4 倍）。
+     陰影只在第一格更新、其他格沿用（同一幀場景沒動，畫面一樣）。 */
+  const sm=renderer.shadowMap, au=sm.autoUpdate; sm.autoUpdate=false; let first=true;
   for(const p of panes){
+    sm.needsUpdate=first; first=false;
     const x=Math.round(p.rect.x*w), y=Math.round(p.rect.y*h);
     const pw=Math.max(1,Math.round(p.rect.w*w)), ph=Math.max(1,Math.round(p.rect.h*h));
     renderer.setViewport(x,y,pw,ph);
@@ -46,6 +50,7 @@ export function renderSplit(renderer,scene,panes){
     if(p.camera.aspect!==pw/ph){ p.camera.aspect=pw/ph; p.camera.updateProjectionMatrix(); }
     renderer.render(scene,p.camera);
   }
+  sm.autoUpdate=au;
   renderer.setScissorTest(false);
   renderer.setViewport(0,0,w,h);
 }

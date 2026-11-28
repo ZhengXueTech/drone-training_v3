@@ -127,7 +127,7 @@ function playground(root,T,L){
   for(const [x,z] of [[-BX-2,-BZ-2],[BX+2,-BZ-2],[BX+2,BZ+2],[-BX-2,BZ+2]]){
     const p=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,11,8),new THREE.MeshStandardMaterial({color:L?0x2a3550:0x9ca3af})); p.position.set(x,5.5,z); root.add(p);
     const head=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.6,0.3),new THREE.MeshBasicMaterial({color:0xfff6d8})); head.position.set(x,11,z); head.lookAt(0,0,0); root.add(head);
-    const l=new THREE.SpotLight(0xfff1d0,L?60:30,60,0.6,0.5); l.position.set(x,11,z); l.target.position.set(x*0.3,0,z*0.3); root.add(l,l.target); }
+    /* 2026-11-28 老師：對戰 lag → 拿掉 4 盞 SpotLight（每盞會讓整個場景每個像素多算一次光，分割畫面更重）；燈頭仍是亮白色 */ }
 }
 
 /* ① 城市：柏油地面＋街道虛線＋人行道（每棟大樓周圍）＋幾處斑馬線 */
