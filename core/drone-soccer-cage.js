@@ -379,7 +379,7 @@ export function buildSoccerCage({tint=0x3399ff,team=null,scale=1,tail=0xffffff,s
   const ledM=new THREE.MeshBasicMaterial({color:tint});
   // 2026-11-17 新增三種實機燈位（老師決定全部開放自由選，不跟機型綁）：
   // 'dome'＝頂部燈罩（TC 200I 的 H7 燈罩、GT2：Ø50 環燈板在機身中央頂部）
-  // 'waist'＝腰帶燈（Balkin-S3：燈條貼原廠白色圓環，r≈61 mm、機臂下方）
+  // 'waist'＝腰帶燈（Balkin v3：燈條貼原廠白色圓環，r≈61 mm、機臂下方）
   // 'frame'＝兩排燈框（TC 200I v6：環燈列在上、尾燈列在下，燈框 Ø135）
   const XR={dome:{r:0.115,y:0.045,w:0.018,h:0.016},waist:{r:0.31,y:-0.035,w:0.026,h:0.02},frame:{r:0.343,y:-0.018,w:0.024,h:0.02}}[ringPos];
   if(XR){
@@ -475,7 +475,7 @@ export const RING_POS=[
   {code:'outer',name:'外圈',sub:'最明顯'},
   {code:'inner',name:'球內',sub:'從縫隙透光'},
   {code:'dome', name:'頂部燈罩',sub:'像 TC 200I、GT2'},
-  {code:'waist',name:'腰帶燈',sub:'像 Balkin-S3'},
+  {code:'waist',name:'腰帶燈',sub:'像 Balkin v3'},
   {code:'frame',name:'兩排燈框',sub:'像 TC 200I 燈框'},
 ];
 /* 燈籠款頂部（11-17 老師：三種都開放選） */

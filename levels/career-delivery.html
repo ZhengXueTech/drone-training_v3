@@ -94,6 +94,7 @@ const ch=new Challenge({levelId:LEVEL_ID,input});
 const hud=new HUD(ch.hudFeatures(LEVEL.hud));
 const ui=new UI(input);
 const arm=new Arming({input,ui}); arm.hidden=true;
+let dayArmed=false; arm.onChange=v=>{ if(v)dayArmed=true; };   // 計時從起槳後才開始（擺攤新手看提示的時間不算）
 ch.ui=ui; ch.setHud(hud);
 const BX=22, BZ=22, BY=36;   // 2026-11-28 比例標準：一層樓 3 m，最高 10 樓 30 m
 const rig=new CameraRig(engine.camera,{pilotPositions:[
@@ -479,7 +480,7 @@ function startDay(){
   drone.reset((day.campus?SPAWN5:SPAWN).clone()); drone.mode='arcade'; ch.apply(drone); prevYaw=drone.yaw;
   prevVh.set(0,0);
   ui.closeModal(); sfx.play('click');
-  engine.simStarted=true; playing=true; finished=false; arm.reset(); arm.hidden=false;
+  engine.simStarted=true; playing=true; finished=false; arm.reset(); arm.hidden=false; dayArmed=false;
   cargoBar.style.display='block'; syncModes();
   hud.setMission(`第${day.n}天・${day.title}`);
   hud.toast(`${GOODS[day.goods].icon} 先起槳，再慢慢升空`,'ok');
@@ -618,7 +619,7 @@ engine.start((dt,simStarted)=>{
     if(arm.armed)drone.update(dt,pa); else if(air)freeFall(drone,dt); else drone.vel.set(0,0,0);
     if(inCampus&&arm.armed){ const th=pa.throttle||0; drone.pos.y=Math.min(drone.bounds.y,drone.pos.y+(th>0?th*3:th*1.2)*dt); }   // 空拍機爬升較快（約 7 m/s，接近實機）
     const hit=collide();
-    tSec+=dt;
+    if(dayArmed)tSec+=dt;
     // 晃動＝水平加速度（平滑 0.25 秒）——陣風造成的不算玩家的錯，扣分時減半
     const vh=new THREE.Vector2(drone.vel.x,drone.vel.z), acc=vh.clone().sub(prevVh).length()/Math.max(dt,1e-3); prevVh.copy(vh);
     aS+=(Math.min(acc,40)-aS)*Math.min(1,dt/0.25);
@@ -640,7 +641,7 @@ engine.start((dt,simStarted)=>{
     landT=(onPad&&!needDisarm)?landT+dt:0;
     if(landT>1.0&&playing){ landT=0; day.campus?finishCampus():deliverStop(); }
     if(integrity<=0)fail(day.campus?'畫面晃得太厲害，學校退件':`${GOODS[day.goods].name}${day.goods==='cake'?'塌了':day.goods==='vase'?'碎了':'灑光了'}`);
-    if(day.time&&playing){ timeLeft-=dt; if(timeLeft<=0)fail('超過時間，客人取消訂單'); }
+    if(day.time&&playing&&dayArmed){ timeLeft-=dt; if(timeLeft<=0)fail('超過時間，客人取消訂單'); }
     // HUD
     const pct=Math.round(integrity);
     cargoTxt.textContent=`${GOODS[day.goods].icon} ${GOODS[day.goods].name} ${pct}%`+(day.stops.length>1?`　第 ${Math.min(stopIdx+1,day.stops.length)}/${day.stops.length} 單`:'');

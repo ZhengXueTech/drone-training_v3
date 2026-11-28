@@ -1,5 +1,5 @@
 /* core/arming.js — 起槳／停槳（2026-11-28 老師：模擬器沒有起槳停槳，也沒有教學；擺攤時每個人都會遇到）
-   規則（照實機 Betaflight／天芎／S3）：
+   規則（照實機 Betaflight／天芎／Balkin v3）：
      ・起槳前馬達不轉，飛不起來
      ・起槳時油門要在最低（遙控器）／不能推油門（手把、鍵盤）
      ・空中停槳＝馬達停，直接掉下來（安全教育）；手勢／按鍵在空中不接受停槳，只有撥桿可以
@@ -21,7 +21,7 @@ const isRC=(gp,cfg)=>!!(cfg&&cfg.throttleType==='bottom')||/startrc|radiomaster|
 export class Arming{
   constructor({input,ui=null,enabled=true}={}){
     this.input=input; this.ui=ui; this.enabled=enabled; this.armed=!enabled;
-    this._g=0; this._gLock=false; this._swPrev=null; this._swBlock=false; this._warnT=0; this._kb=false; this._click=false;
+    this._g=0; this._gLock=false; this._swPrev=null; this._swBlock=false; this._warnT=0; this._kb=false; this._click=false; this._yFree=false;
     this.onChange=null; this._build();
     addEventListener('keydown',e=>{ if(e.code==='KeyE'&&!e.repeat)this._kb=true; });
     globalThis.__ndArmed=this.armed;
@@ -61,7 +61,10 @@ export class Arming{
     let gest=false;
     if(gp&&m!=='switch'){
       const ax=n=>this.input.gpAxis(gp,n,cfg), t=ax('throttle'), y=ax('yaw'), pi=ax('pitch'), r=ax('roll');
-      gest=t<-0.85&&pi<-0.85&&((y>0.85&&r<-0.85)||(y<-0.85&&r>0.85));
+      // 2026-11-28 實測：手把搖桿是圓形框，扳到斜角時每一軸只有約 0.7（截圖 Y +69%），不可能兩軸都過 0.85。
+      // 改成看「扳得夠遠（長度 0.8 以上）＋方向在對的那一格」：左桿右下（或左下）、右桿左下（或右下），兩邊相反。
+      const L=Math.hypot(y,t), Rr=Math.hypot(r,pi), Q=0.4;
+      gest=L>0.8&&Rr>0.8&&t<-Q&&pi<-Q&&((y>Q&&r<-Q)||(y<-Q&&r>Q));
       if(gest&&!this._gLock){ this._g+=dt; if(this._g>=0.5){ this._gLock=true; this._g=0;
           if(!this.armed)want=true; else if(!airborne)want=false; else this._warn('空中不能用手勢停槳，先降落'); } }
       if(!gest){ this._g=0; if(Math.abs(y)<0.3&&Math.abs(r)<0.3)this._gLock=false; }
@@ -69,8 +72,10 @@ export class Arming{
     // 2b. 搖桿精靈把「起槳」指派給一顆按鈕：按一下切換
     if(gp&&Number.isInteger(cfg?.buttons?.arm)&&cfg.buttons.arm>=0){ if(this.input.gpBtnEdge(gp,cfg.buttons.arm))want=this._toggleWant(airborne,lowT); }
     // 3. 標準手把 Y 鍵（b3 沒被其他功能占用時）
+    this._yFree=false;
     if(gp&&m==='pad'&&gp.mapping==='standard'){
       const used=Object.values(cfg?.buttons||{}).includes(3)||(cfg?.buttons&&cfg.buttons.arm>=0);
+      this._yFree=!used;
       const e=this.input.gpBtnEdge(gp,3);
       if(e&&!used) want=this._toggleWant(airborne,lowT);
     }
@@ -117,14 +122,15 @@ export class Arming{
     this._st.style.borderColor=this.armed?'#4ade80':'rgba(255,255,255,.35)';
     if(!show){ this._el.style.display='none'; return; }
     { const gp=this._gp(p); this._yName=gp&&/dualsense|dualshock|wireless controller|054c|playstation/i.test(gp.id)&&!/xbox/i.test(gp.id)?'△':'Y'; }
-    const big=this.count()<BIG_N, key=m+(big?'B':'S')+(gesturing?'g':'');
+    const big=this.count()<BIG_N, key=m+(big?'B':'S')+(gesturing?'g':'')+(this._yFree?'y':'');
     this._el.style.display='block';
     if(this._key===key)return; this._key=key;
     this._el.className=big?'':'small';
     const D={
       switch:['撥起「起槳撥桿」','油門先拉到最低，再撥起槳撥桿（真機也是這樣）。','sw'],
       rc:['兩支搖桿往「下、內」扳','油門拉到底，左桿往右下、右桿往左下，扳住 0.5 秒。','csc'],
-      pad:[`按 ${this._yName} 起槳`,'也可以：兩支搖桿都往「下、內」扳住 0.5 秒（跟遙控器一樣）。','csc'],
+      pad:this._yFree?[`按 ${this._yName} 起槳`,'也可以：兩支搖桿都往「下、內」扳住 0.5 秒（跟遙控器一樣）。','csc']
+        :['兩支搖桿往「下、內」扳','左桿扳到右下角、右桿扳到左下角，扳住 0.5 秒（'+this._yName+' 鍵已被搖桿設定用掉）。','csc'],
       kb:['按 E 起槳','起槳時不要按 W（油門）。降落後再按一次 E＝停槳。',null],
       touch:['點下面的「起槳」','起槳後馬達開始轉，才能推油門起飛。',null]}[m]||['起槳',''];
     this._el.innerHTML=`<h3>🔒 先起槳</h3><div class="d">${gesturing?'繼續扳住…':D[0]}</div>${big&&D[2]?this._svg(D[2]):''}`
