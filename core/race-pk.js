@@ -19,6 +19,7 @@ import { bump } from './feedback.js';
 import { UI } from './ui.js';
 import { attachTouchSeat } from './hud.js';
 import { buildBasicField, makeRing } from './world.js';
+import { buildVenue } from './race-venue.js';
 import { CameraRig, CAM_LABELS } from './camera.js';
 import { buildDroneStyle, DRONE_STYLES } from './drone-styles.js';
 import { checkRingPass } from './systems/scoring.js';
@@ -81,16 +82,9 @@ function paintRings(target){
   rings.forEach((r,i)=>{ const on=i===target; r.scale.setScalar(on?1.12:1);
     r.children.forEach((m,j)=>{ m.material.opacity=on?(j?0.35:1):(j?0.06:0.28); }); });
 }
-/* PIT 停機坪 */
+/* 2026-11-28 場地跟單人賽道共用 core/race-venue.js：每條賽道自己的地面、起終點拱門、PIT 停機坪、照物理邊界畫圍網 */
 const PIT=T.pit.clone();
-{ const g=new THREE.Group();
-  const pad=new THREE.Mesh(new THREE.CircleGeometry(2,32),new THREE.MeshBasicMaterial({color:0xfacc15,transparent:true,opacity:0.35})); pad.rotation.x=-Math.PI/2; pad.position.y=0.03; g.add(pad);
-  const rim=new THREE.Mesh(new THREE.RingGeometry(1.9,2.05,40),new THREE.MeshBasicMaterial({color:0xfacc15})); rim.rotation.x=-Math.PI/2; rim.position.y=0.04; g.add(rim);
-  const cv=document.createElement('canvas'); cv.width=256; cv.height=128; const c2=cv.getContext('2d');
-  c2.fillStyle='#facc15'; c2.font='bold 80px sans-serif'; c2.textAlign='center'; c2.textBaseline='middle'; c2.fillText('PIT',128,64);
-  const sign=new THREE.Mesh(new THREE.PlaneGeometry(2.4,1.2),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,side:THREE.DoubleSide}));
-  sign.position.set(0,2.6,-2.2); sign.rotation.y=T.pitSignYaw??-Math.PI/2; g.add(sign);
-  g.position.copy(PIT); engine.scene.add(g); }
+buildVenue(engine.scene,T,{ring0:rings[0],ringR:(T.rings[0].r||2.2)+0.4,pit:PIT,pitYaw:T.pitSignYaw??0});
 
 /* 障礙與亂流區（規則同 race.js） */
 const OBS=T.obstacles||[], BOXES=T.boxes||[], ZONES=T.zones||[];

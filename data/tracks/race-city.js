@@ -4,6 +4,7 @@
    讓單人賽道與賽道對戰 levels/race-pk.html 共用同一份；內容一字未改）
    ============================================================ */
 import * as THREE from 'three';
+import { look, edges, hideThemeBits, windowTex } from '../../core/race-look.js';   // 2026-11-28 場景配色跟 v3 主題對齊
 let seed=20261010; const rnd=()=>((seed=(seed*1664525+1013904223)>>>0)/4294967296);
 const CP=[[0,2.6,20],[15,3,19],[25,4.5,8],[24,9,-6],[12,11,-15],[-6,6,-18],[-19,3,-12],[-26,4,2],[-18,8.5,13],[-8,3.2,19]].map(a=>new THREE.Vector3(...a));
 const curve=new THREE.CatmullRomCurve3(CP,true,'catmullrom',0.5);
@@ -35,6 +36,18 @@ function winTex(){ const c=document.createElement('canvas'); c.width=64; c.heigh
   for(let y=6;y<128;y+=14)for(let x=5;x<64;x+=15){ g.fillStyle=rnd()<0.45?'#ffe9a8':'#6b7a95'; g.fillRect(x,y,9,8); }
   const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t; }
 function decorate(scene){
+  const L=look();
+  if(L){   // v3 主題：深色大樓＋發光窗戶＋霓虹外框線；地面用主題的發光格線（不蓋灰色地板）
+    const wt=windowTex(L);
+    for(const b of blds){ const t=wt.clone(); t.needsUpdate=true; t.repeat.set(Math.max(1,Math.round(b.w/3)),Math.max(1,Math.round(b.h/4)));
+      const m=new THREE.Mesh(new THREE.BoxGeometry(b.w,b.h,b.d),new THREE.MeshStandardMaterial({color:L.bldg,roughness:0.7,metalness:0.2,emissive:0xffffff,emissiveMap:t,emissiveIntensity:0.85}));
+      m.position.set(b.x,b.h/2,b.z); m.castShadow=m.receiveShadow=true; scene.add(m);
+      edges(m,L.caps[Math.floor(Math.abs(b.x*7+b.z*3))%L.caps.length],0.55);
+      const cap=new THREE.Mesh(new THREE.BoxGeometry(b.w*0.92,0.18,b.d*0.92),new THREE.MeshBasicMaterial({color:L.caps[Math.floor(Math.abs(b.x+b.z))%L.caps.length]}));
+      cap.position.set(b.x,b.h+0.09,b.z); scene.add(cap); }
+    const br=new THREE.Mesh(new THREE.BoxGeometry(bridge.w,bridge.h-bridge.y0,bridge.d),new THREE.MeshStandardMaterial({color:L.bldg,roughness:0.5,metalness:0.4}));
+    br.position.set(bridge.x,(bridge.h+bridge.y0)/2,bridge.z); scene.add(br); edges(br,L.edge,0.9);
+  }else{
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(BX*2,BZ*2),new THREE.MeshStandardMaterial({color:0x2a2f38,roughness:1}));
   ground.rotation.x=-Math.PI/2; ground.position.y=0.01; ground.receiveShadow=true; scene.add(ground);
   const tex=winTex();
@@ -44,6 +57,7 @@ function decorate(scene){
     const roof=new THREE.Mesh(new THREE.BoxGeometry(b.w+0.2,0.2,b.d+0.2),new THREE.MeshStandardMaterial({color:0x222833})); roof.position.set(b.x,b.h+0.1,b.z); scene.add(roof); }
   const br=new THREE.Mesh(new THREE.BoxGeometry(bridge.w,bridge.h-bridge.y0,bridge.d),new THREE.MeshStandardMaterial({color:0x9fb3c8,metalness:0.3,roughness:0.4}));
   br.position.set(bridge.x,(bridge.h+bridge.y0)/2,bridge.z); scene.add(br);
+  }
   /* 亂流區：半透明的旋轉風圈 */
   const grp=[];
   for(const z of zones){ const g=new THREE.Group(); g.position.set(z.x,0,z.z);

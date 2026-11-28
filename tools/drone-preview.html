@@ -1,0 +1,23 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<script type="importmap">{ "imports": { "three": "../vendor/three-0.184.0/three.module.min.js" } }</script>
+<style>body{margin:0;background:#16202e}canvas{display:block}</style></head><body>
+<canvas id="c" width="1500" height="560"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { buildDroneStyle } from '../core/drone-styles.js';
+const codes=(new URLSearchParams(location.search).get('c')||'agri-sprayer,rescue-search,bridge-probe,inspect-cam,cargo-lift').split(',');
+const r=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true}); r.setSize(1500,560,false);
+r.outputColorSpace=THREE.SRGBColorSpace; r.toneMapping=THREE.ACESFilmicToneMapping;
+const W=1500/codes.length;
+r.setScissorTest(true);
+codes.forEach((code,i)=>{
+  const sc=new THREE.Scene(); sc.background=new THREE.Color(0x1d2b40);
+  sc.add(new THREE.HemisphereLight(0xffffff,0x334455,1.4)); const dl=new THREE.DirectionalLight(0xffffff,2.2); dl.position.set(2,4,3); sc.add(dl);
+  const g=buildDroneStyle(code,{scale:1}); sc.add(g);
+  const box=new THREE.Box3().setFromObject(g), s=box.getSize(new THREE.Vector3()).length();
+  const cam=new THREE.PerspectiveCamera(35,W/560,0.01,50); const c=box.getCenter(new THREE.Vector3());
+  cam.position.set(c.x+s*0.9,c.y+s*0.75,c.z-s*1.25); cam.lookAt(c);
+  r.setViewport(i*W,0,W,560); r.setScissor(i*W,0,W,560); r.render(sc,cam);
+});
+window.done=true;
+</script></body></html>

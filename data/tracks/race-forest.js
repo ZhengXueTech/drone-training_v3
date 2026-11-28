@@ -4,6 +4,7 @@
    讓單人賽道與賽道對戰 levels/race-pk.html 共用同一份；內容一字未改）
    ============================================================ */
 import * as THREE from 'three';
+import { look, edges, hideThemeBits, windowTex } from '../../core/race-look.js';   // 2026-11-28 場景配色跟 v3 主題對齊
 /* 固定亂數（每次樹的位置都一樣，成績才能比） */
 let seed=20261009; const rnd=()=>((seed=(seed*1664525+1013904223)>>>0)/4294967296);
 /* 賽道中心線：封閉曲線，經過低空倒木（第 5 個控制點）與山脊（第 7 個控制點） */
@@ -29,24 +30,30 @@ const rocks=[];
 for(let t=0.17;t<0.33;t+=0.022){ const p=curve.getPointAt(t), tg=curve.getTangentAt(t); const nx=tg.z, nz=-tg.x, L=Math.hypot(nx,nz);
   for(const s of [-1,1]){ const x=p.x+s*nx/L*4.6, z=p.z+s*nz/L*4.6, r=1.1+rnd()*0.7, h=3+rnd()*4; rocks.push({x,z,r,h}); obstacles.push({x,z,r,h}); } }
 function decorate(scene){
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(BX*2,BZ*2),new THREE.MeshStandardMaterial({color:0x1f3a22,roughness:1}));
-  ground.rotation.x=-Math.PI/2; ground.position.y=0.01; ground.receiveShadow=true; scene.add(ground);
+  const L=look();   // v3 主題：夜晚森林（深青綠樹冠、暗色樹幹、螢火蟲），藏掉城市剪影和地面格線
+  if(L){ hideThemeBits(scene,{skyline:true,grid:true}); scene.add(new THREE.HemisphereLight(0x9fe8d0,0x10241f,0.9)); }
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(BX*2,BZ*2),new THREE.MeshStandardMaterial({color:L?0x10302a:0x1f3a22,roughness:1}));
+  ground.rotation.x=-Math.PI/2; ground.position.y=L?0.02:0.01; ground.receiveShadow=true; scene.add(ground);
   const trunkG=new THREE.CylinderGeometry(1,1,1,7), leafG=new THREE.ConeGeometry(1,1,8);
-  const trunks=new THREE.InstancedMesh(trunkG,new THREE.MeshStandardMaterial({color:0x5b3a21}),trees.length);
-  const leaves=new THREE.InstancedMesh(leafG,new THREE.MeshStandardMaterial({color:0x2f7a3b,flatShading:true}),trees.length);
+  const trunks=new THREE.InstancedMesh(trunkG,new THREE.MeshStandardMaterial({color:L?0x2b2230:0x5b3a21}),trees.length);
+  const leaves=new THREE.InstancedMesh(leafG,new THREE.MeshStandardMaterial(L?{color:0x1a8a72,flatShading:true,emissive:0x0a4a3e,emissiveIntensity:0.7,roughness:0.8}:{color:0x2f7a3b,flatShading:true}),trees.length);
+  if(L){ const n=160, pos=new Float32Array(n*3); for(let i=0;i<n;i++){ pos[i*3]=(Math.random()-.5)*BX*2; pos[i*3+1]=0.5+Math.random()*6; pos[i*3+2]=(Math.random()-.5)*BZ*2; }
+    const ff=new THREE.Points(new THREE.BufferGeometry().setAttribute('position',new THREE.BufferAttribute(pos,3)),new THREE.PointsMaterial({color:L.caps[0],size:0.12,transparent:true,opacity:0.8}));
+    scene.add(ff); }
   const m=new THREE.Matrix4(), q=new THREE.Quaternion(), s=new THREE.Vector3(), p=new THREE.Vector3();
   trees.forEach((t,i)=>{ trunks.setMatrixAt(i,m.compose(p.set(t.x,t.h*0.25,t.z),q,s.set(t.r,t.h*0.5,t.r)));
     leaves.setMatrixAt(i,m.compose(p.set(t.x,t.h*0.68,t.z),q,s.set(1.6,t.h*0.62,1.6))); });
   trunks.castShadow=leaves.castShadow=true; scene.add(trunks,leaves);
-  const rockM=new THREE.MeshStandardMaterial({color:0x6b6f73,flatShading:true});
+  const rockM=new THREE.MeshStandardMaterial({color:L?0x2d3446:0x6b6f73,flatShading:true});
   rocks.forEach(r=>{ const g=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockM); g.position.set(r.x,r.h*0.45,r.z); g.scale.set(r.r,r.h*0.5,r.r); g.rotation.y=r.x; scene.add(g); });
   /* 倒木：架在第 5 個控制點上方（環在下面，要低飛穿過） */
   const lp=CP[5], tg=curve.getTangentAt(0.5);
-  const log=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.4,9,10),new THREE.MeshStandardMaterial({color:0x6b4425}));
+  const log=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.4,9,10),new THREE.MeshStandardMaterial({color:L?0x3a2a33:0x6b4425}));
   log.position.set(lp.x,3.6,lp.z); log.rotation.z=Math.PI/2; log.rotation.y=Math.atan2(tg.x,tg.z); scene.add(log);
-  for(const sgn of [-1,1]){ const st=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.35,3.6,7),new THREE.MeshStandardMaterial({color:0x5b3a21}));
+  for(const sgn of [-1,1]){ const st=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.35,3.6,7),new THREE.MeshStandardMaterial({color:L?0x2b2230:0x5b3a21}));
     st.position.set(lp.x+Math.cos(log.rotation.y)*4.2*sgn,1.8,lp.z-Math.sin(log.rotation.y)*4.2*sgn); scene.add(st);
     obstacles.push({x:st.position.x,z:st.position.z,r:0.35,h:3.6}); }
+  if(L)edges(log,L.edge,0.6);
 }
 const dir=pts[1].clone().sub(pts[N-1]).setY(0).normalize();
 export const TRACK=({levelId:'race-forest',title:'森林峽谷',bounds:{x:BX,z:BZ,y:10},sky:0x0d1b17,fog:[22,62],rings,obstacles,decorate,

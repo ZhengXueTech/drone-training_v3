@@ -13,6 +13,7 @@
 import { LEVELS } from '../data/levels-manifest.js';
 import { CATEGORIES } from '../data/level-categories.js';
 import { progress } from '../data/progress.js';
+import { CHAPTERS } from '../data/chapters.js';   // 2026-11-28 首頁章節：回首頁時直接打開這一關所屬的章節
 
 const KEY='nd.nav.from';
 const ROOT=new URL('../',import.meta.url);                       // 專案根目錄
@@ -26,6 +27,7 @@ export function currentLevel(){
   return LEVELS.find(l=>bare(l.playFile||l.file)===here)||null;
 }
 const catOf=lv=>CATEGORIES.find(c=>c.match(lv))||null;
+const chHash=lv=>{ const c=lv&&CHAPTERS.find(c=>c.levels.includes(lv.id)); return c?'#ch-'+c.id:'#exp'; };
 
 /* 進關卡時記下「從哪一頁來的」。重新整理、從上一關按「下一關」過來＝沿用原本記的。 */
 export function rememberOrigin(){
@@ -49,9 +51,9 @@ export function listTarget(){
   const isHome=(p===''||p==='index.html');
   const label=isHome?'回首頁':p==='pages/pairing.html'?'回配對大廳':'回關卡列表';
   const hash=(!isHome&&lv&&p.startsWith('pages/levels-'))?'#lv-'+lv.id:'';
-  return {href:new URL((href||'index.html')+(isHome?'#exp':hash),ROOT).href,label,isHome};
+  return {href:new URL((href||'index.html')+(isHome?chHash(lv):hash),ROOT).href,label,isHome};
 }
-export const homeHref=()=>new URL('index.html#exp',ROOT).href;
+export const homeHref=()=>new URL('index.html'+chHash(currentLevel()),ROOT).href;
 
 function locked(lv){
   if(!lv.unlockAfter)return false;
@@ -88,6 +90,12 @@ export function rewriteButtons(title,buttons){
   if(isPause&&!out.some(b=>b.id==='b-back'||b.id==='b-list')){
     out.push({id:'b-list',label:t.label,onClick:go(t.href)}); added.push('b-list');
     if(!t.isHome){ out.push({id:'b-home',label:'回首頁',onClick:go(homeHref())}); added.push('b-home'); }
+  }
+  // 2026-11-22 離線 EXE 全螢幕鎖定：沒有網址列／上一頁可按，開場畫面、結算畫面一定要有出口。
+  // 有按鈕、但沒有任何「回去」類按鈕的畫面（例：訓練場開場只有紅隊／藍隊出發）→ 最後補一顆「← 回關卡列表／回首頁」。
+  const EXIT=/回首頁|回關卡|回配對|返回|離開/;
+  if(!isPause&&out.length&&!out.some(b=>b&&(/^b-(back|list|home|exit)$/.test(b.id)||EXIT.test(b.label||'')))){
+    out.push({id:'b-exit',label:'← '+t.label,onClick:go(t.href)}); added.push('b-exit');
   }
   return {buttons:out,added};
 }

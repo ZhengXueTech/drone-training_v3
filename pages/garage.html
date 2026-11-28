@@ -11,46 +11,48 @@
      四類零件各三選一、全部開放；數值條即時變化；每個零件一句原理；小任務清單。
      設定存 nd.garage.build（data/parts.js），賽道關卡讀同一份。
      ============================================================ -->
+<link rel="stylesheet" href="../core/v3-site.css">
 <style>
-  body{margin:0;background:#0a0f1a;color:#cfefff;font-family:'Share Tech Mono','Consolas','Microsoft JhengHei',monospace;
-    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:32px 16px;box-sizing:border-box;}
-  .wrap{width:100%;max-width:900px;}
-  .back a{color:#7aa3b8;text-decoration:none;font-size:12px;}
-  h1{font-size:24px;color:#00eeff;letter-spacing:3px;margin:12px 0 4px;}
-  p.sub{font-size:12px;color:#7aa3b8;margin:0 0 16px;line-height:1.7;}
-  .cols{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;}
-  @media (max-width:760px){ .cols{grid-template-columns:1fr;} }
-  .box{background:#0b1626;border:1px solid rgba(0,238,255,.35);border-radius:12px;padding:14px 16px;}
-  .row{margin-bottom:14px;}
-  .row h3{margin:0 0 6px;font-size:14px;color:#facc15;}
+  /* 2026-11-28 改成 v3 網站風格（老師：改裝賽道頁面風格不對） */
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px 30px;}
+  .cols{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;}
+  @media (max-width:820px){ .cols{grid-template-columns:1fr;} }
+  .box{background:var(--card-a);border:1px solid var(--line);border-radius:22px;padding:20px 22px;}
+  .row{margin-bottom:18px;}
+  .row h3{margin:0 0 8px;font-size:17px;font-weight:900;color:var(--ink);}
   .opts{display:flex;gap:8px;flex-wrap:wrap;}
-  .opts button{flex:1;min-width:90px;min-height:44px;font-family:inherit;font-size:13px;background:#0e2238;color:#cfefff;
-    border:1px solid rgba(0,238,255,.35);border-radius:10px;cursor:pointer;padding:8px;}
-  .opts button.on{background:#00eeff;color:#04202c;border-color:#00eeff;font-weight:bold;}
-  .why{font-size:12px;color:#9fc3d8;margin-top:6px;min-height:34px;line-height:1.5;}
-  .bar{display:flex;align-items:center;gap:8px;margin:7px 0;font-size:13px;}
-  .bar span.n{width:40px;color:#cfefff;}
-  .bar .t{flex:1;height:12px;background:#132a40;border-radius:6px;overflow:hidden;position:relative;}
-  .bar .t i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#0ea5e9,#22d3ee);transition:width .25s;}
-  .bar .t b{position:absolute;left:50%;top:-2px;bottom:-2px;width:2px;background:rgba(250,204,21,.7);}
-  .bar span.v{width:30px;text-align:right;color:#7aa3b8;font-size:12px;}
-  .sum{font-size:13px;line-height:1.7;margin-top:10px;color:#e6f7ff;}
-  .miss{list-style:none;padding:0;margin:6px 0 0;font-size:13px;}
-  .miss li{padding:6px 0;border-bottom:1px solid rgba(0,238,255,.12);}
-  .miss li.done{color:#4ade80;}
-  .miss small{display:block;color:#7aa3b8;font-size:11px;}
-  .go{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
-  .go a,.go button{flex:1;text-align:center;min-height:46px;line-height:46px;font-family:inherit;font-size:15px;border-radius:10px;
-    text-decoration:none;cursor:pointer;border:2px solid #00eeff;background:#06243a;color:#cfefff;}
-  .go a.main{background:#00eeff;color:#04202c;font-weight:bold;}
-  footer{margin-top:24px;font-size:11px;color:#3b5c7a;text-align:center;}
+  .opts button{flex:1;min-width:96px;min-height:46px;font:inherit;font-size:15px;font-weight:700;background:var(--card2);color:var(--ink);
+    border:2px solid var(--line);border-radius:12px;cursor:pointer;padding:8px;}
+  .opts button:hover{border-color:var(--acc);}
+  .opts button.on{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);}
+  .why{font-size:14px;color:var(--sub);margin-top:8px;min-height:36px;line-height:1.6;}
+  .bar{display:flex;align-items:center;gap:10px;margin:9px 0;font-size:15px;}
+  .bar span.n{width:44px;color:var(--ink);font-weight:700;}
+  .bar .t{flex:1;height:12px;background:var(--card2);border-radius:6px;overflow:hidden;position:relative;}
+  .bar .t i{position:absolute;left:0;top:0;bottom:0;background:var(--acc);transition:width .25s;}
+  .bar .t b{position:absolute;left:50%;top:-2px;bottom:-2px;width:2px;background:var(--acc2);}
+  .bar span.v{width:34px;text-align:right;color:var(--sub);font-size:14px;}
+  .sum{font-size:15px;line-height:1.8;margin-top:12px;color:var(--ink);}
+  .ttl{font-size:17px;font-weight:900;color:var(--ink);}
+  .miss{list-style:none;padding:0;margin:8px 0 0;font-size:15px;}
+  .miss li{padding:8px 0;border-bottom:1px solid var(--line);}
+  .miss li.done{color:var(--acc);}
+  .miss small{display:block;color:var(--sub);font-size:13px;margin-top:2px;}
+  .go{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
+  .go>*{flex:1;text-align:center;}
+  .note{text-align:center;color:var(--sub);font-size:14px;margin:18px 0 0;}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="back"><a href="levels-race.html">← 回改裝賽道</a></div>
+<header class="v3-top">
+  <a class="v3-brand" href="../index.html"><span class="v3-logo"></span>NEWDRONE</a>
+  <nav><a href="../index.html#ch-race">← 回改裝賽道</a><a href="../index.html">回首頁</a></nav>
+</header>
+<section class="v3-hero sm">
   <h1>🔧 機庫</h1>
-  <p class="sub">換零件，組一台適合賽道的無人機。<b>沒有最強的組合</b>：推力大就耗電、電池大就變重——想想這條賽道需要什麼。黃線＝標準機。</p>
+  <p>換零件，組一台適合賽道的無人機。<b>沒有最強的組合</b>：推力大就耗電、電池大就變重——想想這條賽道需要什麼。黃線＝標準機。</p>
+</section>
+<div class="wrap">
   <div class="cols">
     <div class="box" id="parts"></div>
     <div>
@@ -58,19 +60,22 @@
         <div id="bars"></div>
         <div class="sum" id="sum"></div>
       </div>
-      <div class="box" style="margin-top:12px">
-        <div style="color:#facc15;font-size:14px">🎯 小任務</div>
+      <div class="box" style="margin-top:14px">
+        <div class="ttl">🎯 小任務</div>
         <ul class="miss" id="miss"></ul>
       </div>
       <div class="go">
-        <button id="b-reset">↺ 全部換回標準</button>
-        <a class="main" id="b-race" href="levels-race.html">🏁 選賽道出發</a>
+        <button class="btn sec sm" id="b-reset">↺ 全部換回標準</button>
+        <a class="btn pri sm" id="b-race" href="../index.html#ch-race">🏁 選賽道出發</a>
       </div>
     </div>
   </div>
+  <p class="note">零件設定存在這台電腦的瀏覽器裡，賽道會自動使用。</p>
 </div>
-<footer>零件設定存在這台電腦的瀏覽器裡，賽道會自動使用。</footer>
+<footer class="v3-foot"><span>開發：新北市立中正國民中學 何政學教師｜推廣：新北市立中正國中自造教育及科技中心</span><span><a href="about.html" style="color:inherit">授權：CC BY-NC-SA 4.0（作者自主開發，歡迎各校非商業使用）</a></span></footer>
 <script type="module">
+import { applySiteTheme } from '../core/v3-site.js';
+applySiteTheme();
 import { PART_TYPES, loadBuild, saveBuild, partOf, specOf, bars, enduranceSec, buildLabel, MISSIONS, missionsDone, DEFAULT_BUILD } from '../data/parts.js';
 let build=loadBuild();
 const $=id=>document.getElementById(id);

@@ -18,6 +18,8 @@
    ============================================================ */
 import { DRONE_STYLES } from './drone-styles.js';
 import { CAGE_STYLES, ballPrefsGet, ballPrefsSet } from './drone-soccer-cage.js';   // v3
+import { hasKnowledgeCard, showKnowledgeCard } from '../data/knowledge-cards.js';   // 2026-11-28 情境知識卡
+import { isTaskStyle, taskDroneGet, taskDroneSet, TASK_PALETTES, taskColorGet, taskColorSet } from './drone-styles.js';   // 2026-11-28 任務情境機體切換
 
 export function loadDiff(levelId,diffs,def){
   let v=null; try{ v=localStorage.getItem('nd.diff.'+levelId); }catch{}
@@ -33,8 +35,22 @@ export function startPanel(ui,o){
     onChange:v=>{ diff=v; saveDiff(o.levelId,v); }});
   if(o.rows)rows.push(...o.rows);
   if(o.ch&&o.ch.settingsRows)rows.push(...o.ch.settingsRows());
+  { const c0=o.style&&DRONE_STYLES[o.style.get()]?.code;
+    if(c0&&TASK_PALETTES[c0])rows.push({id:'tcol',label:'🎨 機體配色',value:String(taskColorGet(c0)),
+      options:TASK_PALETTES[c0].map((p,i)=>({v:String(i),label:p.name})),
+      hint:()=>taskDroneGet()==='ball'?'（目前用「我的球機」，配色在切回情境機時生效）':'情境專屬機的顏色',
+      onChange:v=>{ taskColorSet(c0,+v); o.style.set(o.style.get()); }}); }
   const btns=[{id:'b-go',label:o.startLabel||'▶ 開始',primary:true,onClick:()=>o.onStart&&o.onStart(diff)}];
-  if(o.style){
+  const code=o.style&&DRONE_STYLES[o.style.get()]?.code;
+  if(o.style&&isTaskStyle(code)){
+    // 2026-11-28 任務情境：機體在「情境專屬機」和「我的球機」之間切換
+    const name=DRONE_STYLES.find(s=>s.code===code)?.name||'情境機';
+    const lab=()=>taskDroneGet()==='ball'?'⚽ 機體：我的球機':'🚁 機體：'+name;
+    btns.push({id:'b-style',label:lab(),onClick:()=>{
+      taskDroneSet(taskDroneGet()==='ball'?'scene':'ball');
+      o.style.set(o.style.get());
+      const b=document.getElementById('b-style'); if(b)b.textContent=lab(); }});
+  }else if(o.style){
     // v3：按鈕改成換「我的球機」的球框款式（存回 nd3.ball，跟「我的球機」頁同一份設定）
     const lab=()=>'⚽ 球框：'+(CAGE_STYLES.find(c=>c.code===ballPrefsGet().cage)||CAGE_STYLES[0]).name;
     btns.push({id:'b-style',label:lab(),onClick:()=>{
@@ -43,6 +59,7 @@ export function startPanel(ui,o){
       o.style.set(o.style.get());                       // 讓關卡重建機體
       const b=document.getElementById('b-style'); if(b)b.textContent=lab(); }});
   }
+  if(o.levelId&&hasKnowledgeCard(o.levelId))btns.push({id:'b-know',label:'📖 情境知識卡',onClick:()=>showKnowledgeCard(ui,o.levelId,()=>startPanel(ui,o))});
   if(o.buttons)btns.push(...o.buttons);
   return ui.showModal({title:o.title,summary:o.summary??'',tags:o.tags,rules:o.rules,html:o.html,settings:rows,buttons:btns,align:'top'});
 }

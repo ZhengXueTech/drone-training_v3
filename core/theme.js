@@ -100,7 +100,7 @@ function makeSunDisc(s){
 }
 
 /* 遠景城市剪影：InstancedMesh（一次畫完，便宜）＋樓頂發光條 */
-function makeSkyline(c,size){
+function makeSkyline(c,size){   // 回傳的 Group 名字＝'skyline'（賽道可以藏起來，例：森林、室內體育館）
   // 固定亂數種子：每台電腦、每次載入的城市剪影都一樣（像一個固定場地）
   let seed=20261117; const R=()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed);
     t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
@@ -122,7 +122,7 @@ function makeSkyline(c,size){
     }
   }
   caps.count=k;
-  const g=new THREE.Group(); g.add(bldg); if(k)g.add(caps);
+  const g=new THREE.Group(); g.name='skyline'; g.add(bldg); if(k)g.add(caps);
   return g;
 }
 
@@ -153,30 +153,30 @@ export function buildThemedField(scene,{size=15,theme='neon',skipCompassMark=fal
   outer.rotation.x=-Math.PI/2; outer.receiveShadow=true; root.add(outer);
   const field=new THREE.Mesh(new THREE.PlaneGeometry(size*2,size*2),
     new THREE.MeshStandardMaterial({color:c.field,roughness:0.7,metalness:0.25}));
-  field.rotation.x=-Math.PI/2; field.position.y=0.005; field.receiveShadow=true; root.add(field);
+  field.rotation.x=-Math.PI/2; field.position.y=0.005; field.receiveShadow=true; field.name='th-field'; root.add(field);
   const grid=new THREE.GridHelper(size*2,size*2,c.gridMain,c.gridSub);
-  grid.position.y=0.012; grid.material.transparent=true; grid.material.opacity=0.85; root.add(grid);
+  grid.position.y=0.012; grid.material.transparent=true; grid.material.opacity=0.85; grid.name='th-grid'; root.add(grid);
   const og=new THREE.GridHelper(size*26,78,c.outerGrid,c.outerGrid);
   og.position.y=0.008; og.material.transparent=true; og.material.opacity=0.45; root.add(og);
 
   // 邊界：地上發光框線＋四角光柱＋原本高度的淡圍線（物理邊界提示照舊）
   const edgeM=new THREE.MeshBasicMaterial({color:c.edge});
   for(const [x,z,w,d] of [[0,-size,size*2,0.12],[0,size,size*2,0.12],[-size,0,0.12,size*2],[size,0,0.12,size*2]]){
-    const e=new THREE.Mesh(new THREE.BoxGeometry(w,0.04,d),edgeM); e.position.set(x,0.03,z); root.add(e);
+    const e=new THREE.Mesh(new THREE.BoxGeometry(w,0.04,d),edgeM); e.position.set(x,0.03,z); e.name='th-edge'; root.add(e);
   }
   const pillarM=new THREE.MeshBasicMaterial({color:c.pillar,transparent:true,opacity:0.35,
     blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
   const pts=[];
   for(const [x,z] of [[-size,-size],[size,-size],[size,size],[-size,size]]){
     const p=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.3,6,10,1,true),pillarM);
-    p.position.set(x,3,z); root.add(p);
+    p.position.set(x,3,z); p.name='th-edge'; root.add(p);
     const tip=new THREE.Mesh(new THREE.SphereGeometry(0.16,10,8),new THREE.MeshBasicMaterial({color:c.pillar}));
-    tip.position.set(x,0.16,z); root.add(tip);
+    tip.position.set(x,0.16,z); tip.name='th-edge'; root.add(tip);
     pts.push(new THREE.Vector3(x,2.6,z));
   }
   pts.push(pts[0].clone());
-  root.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
-    new THREE.LineBasicMaterial({color:c.pillar,transparent:true,opacity:0.3})));
+  { const ln=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color:c.pillar,transparent:true,opacity:0.3})); ln.name='th-edge'; root.add(ln); }
 
   // 起降區（出生點 0,0,6 附近）
   const pad=new THREE.Group();
@@ -188,12 +188,12 @@ export function buildThemedField(scene,{size=15,theme='neon',skipCompassMark=fal
   for(const [x,y,w,h] of [[-0.28,0,0.1,0.8],[0.28,0,0.1,0.8],[0,0,0.56,0.1]]){
     const b=new THREE.Mesh(new THREE.PlaneGeometry(w,h),hM); b.position.set(x,y,0.001); pad.add(b);
   }
-  pad.rotation.x=-Math.PI/2; pad.position.set(0,0.02,6); root.add(pad);
+  pad.rotation.x=-Math.PI/2; pad.position.set(0,0.02,6); pad.name='th-pad'; root.add(pad);
 
   if(!skipCompassMark){
     const nMark=new THREE.Mesh(new THREE.ConeGeometry(0.5,1.2,4),
       new THREE.MeshStandardMaterial({color:c.north,emissive:c.north,emissiveIntensity:0.6}));
-    nMark.position.set(0,0.6,size+1.2); root.add(nMark);
+    nMark.position.set(0,0.6,size+1.2); nMark.name='th-north'; root.add(nMark);
   }
   scene.add(root);
   return root;

@@ -249,7 +249,10 @@ function chooseCh(id,focus){
     b.addEventListener('click',()=>chooseCh(c.id,true));
     box.appendChild(b); });
   let saved=null; try{ saved=localStorage.getItem('nd3.chapter'); }catch{}
-  chooseCh(CHS.some(c=>c.id===saved)?saved:'basic',false);
+  // 從關卡回來：網址 #ch-<章節>（core/nav-flow.js）→ 直接打開那一章；#exp＝第 1 章
+  const hm=/^#ch-([\w-]+)$/.exec(location.hash), fromHash=hm&&CHS.some(c=>c.id===hm[1])?hm[1]:location.hash==='#exp'?'basic':null;
+  chooseCh(fromHash||(CHS.some(c=>c.id===saved)?saved:'basic'),false);
+  if(fromHash)setTimeout(()=>$('chapters').scrollIntoView({block:'start'}),60);
 }
 /* 對戰入口：同場即時對戰的清單（manifest 裡 modes 有 pvp／pk-live 的） */
 { const live=LEVELS.filter(l=>(l.modes||[]).some(m=>m==='pvp'||m==='pk-live'));

@@ -216,7 +216,7 @@ export class HUD{
       <div class="nd-z" id="nd-status">
         <div id="nd-modes">街機｜跟機</div>
         ${F.battery?`<div>🔋<div class="nd-bar"><i id="nd-bat" style="width:100%;background:var(--nd-green)"></i></div></div>`:''}
-        ${F.liquid?`<div>🛠️<div class="nd-bar"><i id="nd-liq" style="width:100%;background:#22d3ee"></i></div></div>`:''}
+        ${F.liquid?`<div title="藥水">💧<span id="nd-liq-t" style="font-size:11px;margin-left:4px">100%</span><div class="nd-bar"><i id="nd-liq" style="width:100%;background:#22d3ee"></i></div></div>`:''}
         <div id="nd-anomaly" style="display:none;color:var(--nd-red)">⚠ 訊號異常</div>
       </div>
       <div class="nd-z" id="nd-mission"><b id="nd-mtext">—</b>　<span id="nd-mprog"></span>　<span id="nd-mtimer"></span>　<span id="nd-mscore"></span></div>
@@ -312,6 +312,7 @@ export class HUD{
   setLiquid(pct){
     const b=this.el('nd-liq'); if(!b)return;
     b.style.width=pct+'%';
+    const t=this.el('nd-liq-t'); if(t)t.textContent='藥水 '+Math.round(pct)+'%';   // 2026-11-28 原本圖示是 🛠️，看不出是藥水
   }
   /* screenDeg（可選，Phase 5 新增）：wind.screenArrowDeg(dronePos,camera) 算出的
      「目前這顆鏡頭畫面上」的箭頭角度——不傳時退回 info.arrowDeg（絕對世界座標角，

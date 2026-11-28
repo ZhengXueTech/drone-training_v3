@@ -4,6 +4,7 @@
    讓單人賽道與賽道對戰 levels/race-pk.html 共用同一份；內容一字未改）
    ============================================================ */
 import * as THREE from 'three';
+import { look, edges, hideThemeBits, windowTex } from '../../core/race-look.js';   // 2026-11-28 場景配色跟 v3 主題對齊
 const CP=[[0,2,8.5],[9,1.6,8.2],[15,2.6,3],[14.5,2.2,-5],[8,4.2,-8.6],[-2,1.6,-8.6],[-11,2.4,-7.5],[-15.5,3,-1],[-13,1.8,6],[-6,3.6,9]].map(a=>new THREE.Vector3(...a));
 const curve=new THREE.CatmullRomCurve3(CP,true,'catmullrom',0.5);
 const N=12, pts=curve.getSpacedPoints(N).slice(0,N);
@@ -26,24 +27,32 @@ const obstacles=[];
 for(let i=0;i<N;i+=2){ const t=(i+0.5)/N, p=curve.getPointAt(t), tg=curve.getTangentAt(t), s=i%4?1:-1;
   const x=p.x+tg.z*1.9*s, z=p.z-tg.x*1.9*s; if(Math.abs(x)<BX-0.8&&Math.abs(z)<BZ-0.8)obstacles.push({x,z,r:0.12,h:2.2}); }
 function decorate(scene){
-  const floor=new THREE.Mesh(new THREE.PlaneGeometry(BX*2+8,BZ*2+8),new THREE.MeshStandardMaterial({color:0xb7834a,roughness:0.6}));
-  floor.rotation.x=-Math.PI/2; floor.position.y=0.012; floor.receiveShadow=true; scene.add(floor);
-  const lineM=new THREE.MeshBasicMaterial({color:0xffffff});
+  const L=look();   // v3 主題：深藍球場地板＋主題色場線、深色館壁＋發光燈條、障礙物深色加外框
+  if(L){ hideThemeBits(scene,{skyline:true,grid:true,stars:true}); scene.add(new THREE.HemisphereLight(0xb8ccff,0x1a2440,1.1)); }
+  // 2026-11-28 老師：體育館要木地板 → 主題下用木紋貼圖（夜間燈光下偏暖的深木色），場線用主題色
+  let wood=null;
+  if(L){ const c=document.createElement('canvas'); c.width=256; c.height=256; const g=c.getContext('2d');
+    for(let i=0;i<16;i++){ const v=0.75+((i*37)%11)/40; g.fillStyle=`rgb(${Math.round(150*v)},${Math.round(98*v)},${Math.round(58*v)})`; g.fillRect(0,i*16,256,16);
+      g.fillStyle='rgba(0,0,0,.25)'; g.fillRect(0,i*16+15,256,1); const off=(i*53)%256; g.fillRect(off,i*16,1,16); }
+    wood=new THREE.CanvasTexture(c); wood.colorSpace=THREE.SRGBColorSpace; wood.wrapS=wood.wrapT=THREE.RepeatWrapping; wood.repeat.set(10,7); }
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(BX*2+8,BZ*2+8),new THREE.MeshStandardMaterial(L?{map:wood,roughness:0.4,metalness:0.1}:{color:0xb7834a,roughness:0.6}));
+  floor.rotation.x=-Math.PI/2; floor.position.y=0.02; floor.receiveShadow=true; scene.add(floor);
+  const lineM=new THREE.MeshBasicMaterial({color:L?L.edge:0xffffff});
   const addLine=(x,z,w,d)=>{ const l=new THREE.Mesh(new THREE.PlaneGeometry(w,d),lineM); l.rotation.x=-Math.PI/2; l.position.set(x,0.02,z); scene.add(l); };
   addLine(0,0,0.1,BZ*1.6); addLine(0,BZ*0.8,BX*1.6,0.1); addLine(0,-BZ*0.8,BX*1.6,0.1); addLine(BX*0.8,0,0.1,BZ*1.6); addLine(-BX*0.8,0,0.1,BZ*1.6);
   const cc=new THREE.Mesh(new THREE.RingGeometry(2.4,2.5,48),lineM); cc.rotation.x=-Math.PI/2; cc.position.y=0.02; scene.add(cc);
   /* 牆和天花板 */
-  const wallM=new THREE.MeshStandardMaterial({color:0xd9dde3,roughness:0.9,side:THREE.BackSide});
+  const wallM=new THREE.MeshStandardMaterial({color:L?0x1a2a52:0xd9dde3,roughness:0.9,side:THREE.BackSide});
   const hall=new THREE.Mesh(new THREE.BoxGeometry(BX*2+8,CEIL+0.6,BZ*2+8),wallM); hall.position.y=(CEIL+0.6)/2; scene.add(hall);
-  for(let x=-15;x<=15;x+=6)for(const z of [-6,6]){ const lp=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.1,0.8),new THREE.MeshBasicMaterial({color:0xfffbe6})); lp.position.set(x,CEIL+0.2,z); scene.add(lp); }
+  for(let x=-15;x<=15;x+=6)for(const z of [-6,6]){ const lp=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.1,0.8),new THREE.MeshBasicMaterial({color:L?L.caps[0]:0xfffbe6})); lp.position.set(x,CEIL+0.2,z); scene.add(lp); }
   const pl=new THREE.PointLight(0xfff4dd,40,40); pl.position.set(0,CEIL-0.5,0); scene.add(pl);
   /* 障礙物外觀 */
-  const mk=(b,c,o=1)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(b.w,b.h-(b.y0||0),b.d),new THREE.MeshStandardMaterial({color:c,transparent:o<1,opacity:o})); m.position.set(b.x,((b.h)+(b.y0||0))/2,b.z); m.castShadow=true; scene.add(m); };
+  const mk=(b,c,o=1)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(b.w,b.h-(b.y0||0),b.d),new THREE.MeshStandardMaterial({color:L?(o<1?0x9fb3d1:0x1b2a4a):c,transparent:o<1,opacity:o})); m.position.set(b.x,((b.h)+(b.y0||0))/2,b.z); m.castShadow=true; scene.add(m); if(L)edges(m,o<1?L.caps[0]:L.edge,0.7); };
   mk(boxes[0],0xffffff,0.55); mk(boxes[1],0x444444); mk(boxes[2],0x444444); mk(boxes[3],0xf5f5f5,0.85); mk(boxes[4],0xf5f5f5,0.85); mk(boxes[5],0x1f2937); mk(boxes[6],0x1f2937);
   mk(boxes[7],0x2563eb); mk(boxes[8],0x1d4ed8);
-  banners.forEach((b,i)=>{ const h=1.1, m=new THREE.Mesh(new THREE.BoxGeometry(b.w,h,b.d),new THREE.MeshStandardMaterial({color:i?0xdc2626:0x16a34a})); m.position.set(b.x,b.y0+h/2,b.z); scene.add(m);
+  banners.forEach((b,i)=>{ const h=1.1, m=new THREE.Mesh(new THREE.BoxGeometry(b.w,h,b.d),new THREE.MeshStandardMaterial({color:L?L.caps[(i+1)%L.caps.length]:(i?0xdc2626:0x16a34a)})); m.position.set(b.x,b.y0+h/2,b.z); scene.add(m);
     const rope=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,CEIL-b.y0-h),new THREE.MeshBasicMaterial({color:0x333333})); rope.position.set(b.x,(CEIL+b.y0+h)/2,b.z); scene.add(rope); });
-  for(const o of obstacles){ const p=new THREE.Mesh(new THREE.CylinderGeometry(o.r,o.r*1.4,o.h,8),new THREE.MeshStandardMaterial({color:0xf97316})); p.position.set(o.x,o.h/2,o.z); scene.add(p); }
+  for(const o of obstacles){ const p=new THREE.Mesh(new THREE.CylinderGeometry(o.r,o.r*1.4,o.h,8),new THREE.MeshStandardMaterial({color:L?L.acc||L.edge:0xf97316,emissive:L?L.edge:0x000000,emissiveIntensity:L?0.35:0})); p.position.set(o.x,o.h/2,o.z); scene.add(p); }
   const rim=n=>{ const r=new THREE.Mesh(new THREE.TorusGeometry(0.25,0.025,6,20),new THREE.MeshBasicMaterial({color:0xff5500})); r.rotation.x=Math.PI/2; r.position.set(n*17.4,3.05,0); scene.add(r); }; rim(-1); rim(1);
 }
 const dir=pts[1].clone().sub(pts[N-1]).setY(0).normalize();

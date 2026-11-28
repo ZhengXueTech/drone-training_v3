@@ -184,6 +184,9 @@ let invulnTimerObstacle=0, invulnTimerAI=0;
 let flightTime=0, obstacleHits=0, aiHits=0;
 let altitudeDeviationSum=0, altitudeSampleCount=0;
 let playing=false, finished=false;
+/* 2026-11-28 老師：「動態變形挑戰沒有結束」——穿環一直加秒，會飛的人永遠不會結束。
+   改成：闖完 MAX_LOOPS 圈＝通關結束（剩餘秒數換成加分）；另外整場最多 MAX_SEC 秒。 */
+const MAX_LOOPS=3, MAX_SEC=180;
 
 /* ── 視角／模式／蹲姿 ── */
 function cycleCam(){ hud.toast('視角：'+CAM_LABELS[rig.cycleMode()],'ok'); syncModes(); }
@@ -214,12 +217,12 @@ function showIntro(){   // 2026-10-11 統一開始畫面格式
   engine.simStarted=false; playing=false;
   startPanel(ui,{levelId:'x-infinite',title:'🌀 情境體驗 · 動態變形挑戰',ch,style:{get:()=>styleIdx,set:i=>{ styleIdx=i; rebuildMesh(); }},
     summary:'每過 6 個檢查點地圖就<b>亂數重組</b>，越後面越難，撐越久分數越高！',
-    tags:['🟢 穿環加秒','💥 撞柱 −3 秒','🚨 擦到巡邏機 −1 秒'],
+    tags:['🏁 闖完 3 圈通關','🟢 穿環加秒','💥 撞柱 −3 秒','🚨 擦到巡邏機 −1 秒'],
     rules:`<p>記憶地圖沒用了！每過 6 個檢查點，地圖會<b>全面亂數重組</b>：圈數越高，
       障礙柱與巡邏機<b>數量越多、速度越快</b>，第 3 圈起還會<b>上下漂移</b>！</p>
       <p>🟢 <b>穿過光環</b>：加秒＋加分，連續穿越疊加 Combo 倍率<br>
       💥 <b>撞到障礙柱</b>：扣 3 秒　🚨 <b>擦身 AI 巡邏機</b>：扣 1 秒<br>
-      ⏱ 倒數歸零就結束，盡量撐久一點、衝更高分！</p>`,
+      ⏱ 倒數歸零就結束；<b>闖完 3 圈＝通關</b>（剩下的秒數換成加分），整場最多 3 分鐘。</p>`,
     startLabel:'🚀 挑戰未知賽道',onStart:()=>startGame()});
 }
 function startGame(){
@@ -233,7 +236,7 @@ function startGame(){
   ui.closeModal(); sfx.play('click');
   engine.simStarted=true; playing=true; finished=false;
   drone.mode='arcade'; ch.apply(drone); syncModes(); hud.showAttitude(drone.mode!=='arcade');
-  hud.setMission('依序穿環，撐過倒數！');
+  hud.setMission(`依序穿環，撐過倒數！　第 1／${MAX_LOOPS} 圈`);
   hud.setOffscreenTarget(checkpoints[0].position);
   hud.toast('起飛！觀察節奏依序穿環','ok');
 }
@@ -257,7 +260,7 @@ function showPauseModal(){
       {id:'b-restart',label:'重來',onClick:()=>location.reload()},
     ]});
 }
-function finishGame(){
+function finishGame(cleared=false){
   if(finished)return;
   finished=true; playing=false; sfx.play('finish');
   hud.setOffscreenTarget(null);
@@ -266,7 +269,7 @@ function finishGame(){
   progress.record('x-infinite',{completed:true,score:Math.round(score),
     metrics:{currentLoop,totalCheckpointsPassed,obstacleHits,aiHits,
       flightTime:+flightTime.toFixed(1),stabilityScore},...ch.recordFields()});
-  ui.showModal({title:'🏁 挑戰結束',
+  ui.showModal({title:cleared?`🏆 闖完 ${MAX_LOOPS} 圈，通關！`:flightTime>=MAX_SEC?'⏱ 時間到（最多 3 分鐘）':'🏁 挑戰結束',
     html:`<p>🏆 最終得分：<b>${Math.round(score)} 分</b><br>
       🏁 闖過圈數：第 ${currentLoop} 圈　🟢 通過光環：${totalCheckpointsPassed} 個<br>
       ⏱ 生存總時間：${flightTime.toFixed(1)} 秒　📊 高度穩定度：${stabilityScore}/100<br>
@@ -309,6 +312,7 @@ engine.start((dt,simStarted)=>{
 
     timeLeft=Math.max(0,timeLeft-dt);
     if(timeLeft<=0){ finishGame(); }
+    else if(flightTime>=MAX_SEC){ finishGame(); }
     if(comboMultiplier>1.0){
       comboTimer-=dt;
       if(comboTimer<=0)comboMultiplier=1.0;
@@ -345,14 +349,19 @@ engine.start((dt,simStarted)=>{
         timeLeft+=addedTime; score+=addedScore; totalCheckpointsPassed++;
         hud.toast(`⏱️ +${addedTime.toFixed(1)}秒・+${addedScore}分`,'ok'); flashDrone(0x22c55e); sfx.play('ring');
         checkpointIndex++;
-        if(checkpointIndex>=checkpoints.length){
+        if(checkpointIndex>=checkpoints.length&&currentLoop>=MAX_LOOPS){
+          const bonus=Math.round(timeLeft*20); score+=bonus;
+          hud.toast(`🏁 闖完 ${MAX_LOOPS} 圈！剩餘 ${timeLeft.toFixed(1)} 秒換 ${bonus} 分`,'ok');
+          finishGame(true);
+        }else if(checkpointIndex>=checkpoints.length){
           checkpointIndex=0; currentLoop++;
+          hud.setMission(`依序穿環，撐過倒數！　第 ${currentLoop}／${MAX_LOOPS} 圈`);
           drone.reset(PLAYER_SPAWN.clone());
           generateProceduralCourse();
         }else{
           paintRing(checkpoints[checkpointIndex],0x22c55e,0.75);
         }
-        hud.setOffscreenTarget(checkpoints[checkpointIndex].position);
+        if(!finished)hud.setOffscreenTarget(checkpoints[checkpointIndex].position);
       }
     }
 

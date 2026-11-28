@@ -71,7 +71,7 @@ import { renderSplit } from '../core/camera.js';
 import { buildDroneStyle } from '../core/drone-styles.js';
 import '../core/soccer-arena.js';   // 2026-10-11 足球場畫面升級（競技場外觀＋畫質選擇；物理規則不動）
 import { FIELD, TA, SOCCER_SEATS, SoccerDrone, buildSoccerField,
-         resolveCollisions, checkGoal } from '../core/systems/soccer.js';
+         resolveCollisions, checkGoal, ownRingJudge } from '../core/systems/soccer.js';
 import { updateSoccerAI } from '../core/systems/ai.js';
 import { sfx } from '../core/audio.js';
 import { rumbleOn, setRumble } from '../core/feedback.js';
@@ -344,7 +344,7 @@ function triggerGoal(team){
   if(phase!=='playing')return;
   scores[team]++; setGoals[team]++;
   drones.forEach(d=>{if((d.team===TA?'A':'B')===team)d.mustReturn=true;});
-  const ov=document.getElementById('goal-ov'), wd=document.getElementById('goal-word');
+  const ov=document.getElementById('goal-ov'), wd=document.getElementById('goal-word'); wd.textContent='GOAL!';
   wd.style.color=team==='A'?'#00eeff':'#ff4422';
   wd.style.textShadow=`0 0 40px ${wd.style.color},0 0 80px ${wd.style.color}`;
   document.getElementById('goal-sub').textContent=team==='A'?'🔵 A隊得分！':'🔴 B隊得分！';
@@ -352,6 +352,17 @@ function triggerGoal(team){
   sfx.play(team==='A'?'finish':'warn');
   if(team===(refDrone.team===TA?'A':'B')){hud&&hud.toast('進球後全隊退回己方半場！','warn');returnWarned=true;}
   setTimeout(()=>ov.style.display='none',1600);
+}
+/* 犯規：判對方 +1（簡化點球），畫面中央顯示原因 */
+function ringFoul(d,reason){
+  if(phase!=='playing')return;
+  const opp=d.team===TA?'B':'A', who=(d.team===TA?'A':'B')+'隊'+(d.role==='support'?'中場':'後衛');
+  scores[opp]++; setGoals[opp]++;
+  const ov=document.getElementById('goal-ov'), wd=document.getElementById('goal-word');
+  wd.textContent='犯規'; wd.style.color='#ffcc33'; wd.style.textShadow='none';
+  document.getElementById('goal-sub').textContent=`⚖ ${who}：${reason}　→ ${opp}隊 +1`;
+  ov.style.display='flex'; sfx.play('warn');
+  setTimeout(()=>{ ov.style.display='none'; wd.textContent='GOAL!'; },2600);
 }
 function endSet(){
   phase='set_end'; sfx.play('warn');
@@ -480,6 +491,9 @@ engine.start((dt,simStarted)=>{
       }
     });
     resolveCollisions(drones);
+    // 2026-11-28 防守方從自家球門背後穿回場內／被撞進後原路退回＝犯規（只判人類席位；AI 會自己繞）
+    humanIdx.forEach(i=>{ const r=ownRingJudge(drones[i],dt); if(!r)return;
+      if(r.foul)ringFoul(drones[i],r.foul); else if(drones[i]===refDrone&&hud)hud.toast(r.hint,'ok'); });
     for(const d of drones){const g=checkGoal(d,{strict});if(g){triggerGoal(g);break;}}
     setTimer-=dt;
     if(setTimer<=0){setTimer=0;endSet();}

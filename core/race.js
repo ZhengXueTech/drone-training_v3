@@ -19,6 +19,7 @@ import { CameraRig, CAM_LABELS } from './camera.js';
 import { HUD } from './hud.js';
 import { UI } from './ui.js';
 import { buildBasicField, makeRing } from './world.js';
+import { buildVenue } from './race-venue.js';
 import { buildDroneStyle, droneStyleGet, DRONE_STYLES } from './drone-styles.js';
 import { checkRingPass } from './systems/scoring.js';
 import { WindSystem } from './systems/wind.js';          // 2026-10-10 賽道可選風（老師：開始畫面選 無風／微風／強風）
@@ -77,24 +78,9 @@ const rings=T.rings.map((d,i)=>{
   r.rotation.y=Math.atan2(b.x-a.x,b.z-a.z);
   r.userData.kind=kind; engine.scene.add(r); return r;
 });
-/* 起點拱門的兩根柱子 */
-{ const m=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0x334455}), r0=rings[0], R=(T.rings[0].r||2.2)+0.4;
-  const side={x:Math.cos(r0.rotation.y),z:-Math.sin(r0.rotation.y)};
-  for(const s of [-1,1]){ const h=r0.position.y+R; const c=new THREE.Mesh(new THREE.BoxGeometry(0.25,h,0.25),m);
-    c.position.set(r0.position.x+side.x*s*R,h/2,r0.position.z+side.z*s*R); engine.scene.add(c); } }
-/* 進站停機坪 */
+/* 2026-11-28 場地（core/race-venue.js）：每條賽道自己的地面、操場、起終點拱門、PIT 停機坪、照物理邊界畫圍網 */
 const PIT=T.pit.clone();
-const pit=new THREE.Group();
-{ const pad=new THREE.Mesh(new THREE.CircleGeometry(2,32),new THREE.MeshBasicMaterial({color:0xfacc15,transparent:true,opacity:0.35}));
-  pad.rotation.x=-Math.PI/2; pad.position.y=0.03; pit.add(pad);
-  const rim=new THREE.Mesh(new THREE.RingGeometry(1.9,2.05,40),new THREE.MeshBasicMaterial({color:0xfacc15}));
-  rim.rotation.x=-Math.PI/2; rim.position.y=0.04; pit.add(rim);
-  const cv=document.createElement('canvas'); cv.width=256; cv.height=128; const g=cv.getContext('2d');
-  g.fillStyle='#facc15'; g.font='bold 80px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('PIT',128,64);
-  const sign=new THREE.Mesh(new THREE.PlaneGeometry(2.4,1.2),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,side:THREE.DoubleSide}));
-  sign.position.set(0,2.6,-2.2); sign.rotation.y=T.pitSignYaw??-Math.PI/2; pit.add(sign);
-  const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,2.6),new THREE.MeshBasicMaterial({color:0xfacc15})); pole.position.set(0,1.3,-2.2); pit.add(pole);
-  pit.position.copy(PIT); engine.scene.add(pit); }
+buildVenue(engine.scene,T,{ring0:rings[0],ringR:(T.rings[0].r||2.2)+0.4,pit:PIT,pitYaw:T.pitSignYaw??0});
 
 /* ── 機體與幽靈機 ── */
 const SPAWN=T.spawn.clone();
@@ -125,7 +111,12 @@ let ghostData=null; const loadGhost=()=>{ ghostData=null; try{ ghostData=JSON.pa
 const windLabel=()=>'🌬️ 風：'+(windLv?WIND_LEVELS[windLv].label:'無風')+'（按一下換）';
 const jamLabel=()=>'📡 干擾區：'+(jamOn?'開':'關')+'（按一下換）';
 const rec=[];        // 本次軌跡：[t,x,y,z,yaw] 每 0.1 秒
-const rig=new CameraRig(engine.camera);
+// 飛手站位：預設三點若太靠近起點門（會站在拱門底下），往旁邊挪開
+const _pilots=(T.pilots||[new THREE.Vector3(0,1.7,14),new THREE.Vector3(-10,1.7,12),new THREE.Vector3(10,1.7,12)]).map(v=>{
+  const q=v.clone(), r0=T.rings[0].p; const dx=q.x-r0.x, dz=q.z-r0.z;
+  if(Math.hypot(dx,dz)<8){ q.x=r0.x+(dx>=0?9:-9); }
+  q.x=Math.max(-T.bounds.x+1,Math.min(T.bounds.x-1,q.x)); q.z=Math.max(-T.bounds.z+1,Math.min(T.bounds.z-1,q.z)); return q; });
+const rig=new CameraRig(engine.camera,{pilotPositions:_pilots});
 /* 2026-10-11 🥽 VR（老師：FPV 很適合 VR，改機競賽更是）——看法在開始畫面選：FPV 眼鏡／沉浸駕駛艙（B 鍵也能切） */
 const VKEY='nd.race.vrview'; let vrView='goggle'; try{ const v=localStorage.getItem(VKEY); if(v==='goggle'||v==='cockpit')vrView=v; }catch{}
 let vrOK=isHeadset()||/[?&]vr=1/.test(location.search);

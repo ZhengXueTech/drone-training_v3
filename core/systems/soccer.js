@@ -508,3 +508,28 @@ export function checkGoal(d,{strict=false}={}){
   const r=crossR(d,targZ,dir); if(r==null)return null;
   return r<=(strict?strictR():F.GI) ? (d.team===TA?'A':'B') : null;
 }
+
+/* 2026-11-28 老師定案：防守方（非前鋒）從自家球門「背後穿過球門回到場內」＝違規；
+   被撞進自家球門「原路退回場內」也是違規（要往後穿過去、從旁邊或下面繞回）。
+   soccer-real 有自己的裁判（含停留判罰）；這支給 PVP 等沒有裁判的模式共用。
+   每幀呼叫一次，回傳 {foul:'原因'}、{hint:'提示'} 或 null。只看「整顆球真的進到環裡」才算，擦邊不算。 */
+export function ownRingJudge(d,dt){
+  const st=d._orj||(d._orj={side:null,deep:false,grace:0});
+  if(st.grace>0)st.grace-=dt;
+  if(d.role==='striker'){ st.side=null; st.deep=false; return null; }
+  const F=FIELD, ownZ=d.team===TA?-F.GZ:F.GZ, inward=d.team===TA?1:-1;   // inward：往場內的 z 方向
+  const rr=Math.hypot(d.pos.x,d.pos.y-F.GY), dz=(d.pos.z-ownZ)*inward;   // dz>0＝場內那側，<0＝球門後面
+  const inRing=rr<F.GO+F.BR&&Math.abs(dz)<0.30;
+  const zs=dz>=0?1:-1;
+  if(inRing&&st.side==null)st.side=zs;
+  if(inRing&&rr<F.GI+0.05&&Math.abs(dz)<0.12)st.deep=true;
+  if(!inRing&&st.side!=null){
+    let r=null;
+    if(st.deep&&zs>0&&st.grace<=0){
+      r={foul:st.side>0?'被撞進自家球門後原路退回（要往後穿過去、從旁邊繞回）':'從自家球門後面穿過球門回到場內'};
+      st.grace=3;
+    }else if(st.deep&&zs<0&&st.side>0) r={hint:'穿過自家球門了：從旁邊或下面繞回，不要再從環中間穿回去'};
+    st.side=null; st.deep=false; return r;
+  }
+  return null;
+}
